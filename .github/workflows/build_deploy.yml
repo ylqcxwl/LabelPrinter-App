@@ -11,16 +11,14 @@ on:
 
 jobs:
   build:
-    # 修改点：将 windows-2019 改为 windows-latest (目前对应 Windows Server 2022)
-    # 只要 Python 版本锁定为 3.8，生成的 exe 依然兼容 Win7
-    runs-on: windows-latest
+    runs-on: windows-latest # 使用最新 Windows Server 2022
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # 升级到 v4
 
     - name: Set up Python 3.8
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # 升级到 v5
       with:
         python-version: '3.8' # 核心：保持 Python 3.8 以确保 Win7 兼容性
         architecture: 'x64'
@@ -40,7 +38,6 @@ jobs:
             with open('src/version.py', 'w') as f:
                 f.write(f'APP_VERSION = "{version}"\n')
         except FileNotFoundError:
-            # 如果目录结构有误，尝试直接写入当前目录或创建目录
             os.makedirs('src', exist_ok=True)
             with open('src/version.py', 'w') as f:
                 f.write(f'APP_VERSION = "{version}"\n')
@@ -48,11 +45,11 @@ jobs:
     - name: Build with PyInstaller
       run: |
         # 打包命令：单文件，无控制台，添加图标，添加数据
-        # 注意：assets文件夹必须存在于仓库中，否则会报错。如果暂无，可去掉 --add-data 参数
+        # 如果 assets 文件夹不存在，请临时移除 --add-data "assets;assets" 参数以避免报错
         pyinstaller --noconfirm --onefile --windowed --name "LabelPrinter" --icon "assets/icon.ico" --add-data "assets;assets" main.py
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4 # 核心修复：升级到 v4
       with:
         name: LabelPrinter-${{ github.event.inputs.version_tag }}
         path: dist/LabelPrinter.exe
