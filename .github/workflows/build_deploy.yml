@@ -11,7 +11,9 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2019 # 使用较旧的 Runner 以提高 Win7 兼容性概率
+    # 修改点：将 windows-2019 改为 windows-latest (目前对应 Windows Server 2022)
+    # 只要 Python 版本锁定为 3.8，生成的 exe 依然兼容 Win7
+    runs-on: windows-latest
     
     steps:
     - name: Checkout code
@@ -20,7 +22,7 @@ jobs:
     - name: Set up Python 3.8
       uses: actions/setup-python@v4
       with:
-        python-version: '3.8' # Python 3.8 是支持 Win7 的最后一个版本
+        python-version: '3.8' # 核心：保持 Python 3.8 以确保 Win7 兼容性
         architecture: 'x64'
 
     - name: Install dependencies
@@ -34,12 +36,19 @@ jobs:
       run: |
         import os
         version = "${{ github.event.inputs.version_tag }}"
-        with open('src/version.py', 'w') as f:
-            f.write(f'APP_VERSION = "{version}"\n')
+        try:
+            with open('src/version.py', 'w') as f:
+                f.write(f'APP_VERSION = "{version}"\n')
+        except FileNotFoundError:
+            # 如果目录结构有误，尝试直接写入当前目录或创建目录
+            os.makedirs('src', exist_ok=True)
+            with open('src/version.py', 'w') as f:
+                f.write(f'APP_VERSION = "{version}"\n')
 
     - name: Build with PyInstaller
       run: |
         # 打包命令：单文件，无控制台，添加图标，添加数据
+        # 注意：assets文件夹必须存在于仓库中，否则会报错。如果暂无，可去掉 --add-data 参数
         pyinstaller --noconfirm --onefile --windowed --name "LabelPrinter" --icon "assets/icon.ico" --add-data "assets;assets" main.py
 
     - name: Upload Artifact
@@ -51,6 +60,8 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      actions: write
     steps:
     - name: Delete old workflow runs
       uses: Mattraks/delete-workflow-runs@v2
