@@ -13,18 +13,21 @@ class Database:
         self.setup_db()
 
     def setup_db(self):
-        # --- 表结构定义 (保持不变) ---
+        # --- 表结构定义 ---
+        # 修改点：name 不再 UNIQUE，sn4 改为 UNIQUE
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL, 
                 spec TEXT, model TEXT, color TEXT,
-                sn4 TEXT, sku TEXT, code69 TEXT,
+                sn4 TEXT NOT NULL UNIQUE, 
+                sku TEXT, code69 TEXT,
                 qty INTEGER, weight TEXT,
                 template_path TEXT,
                 rule_id INTEGER DEFAULT 0
             )
         ''')
+        
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS box_rules (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +54,7 @@ class Database:
             )
         ''')
         
-        # 检查并补充缺失字段
+        # 补充字段检查
         self._check_and_add_column('products', 'rule_id', 'INTEGER DEFAULT 0')
         self._check_and_add_column('box_rules', 'rule_string', 'TEXT')
         
@@ -59,7 +62,7 @@ class Database:
         default_mapping_json = json.dumps(DEFAULT_MAPPING)
         self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('field_mapping', ?)", (default_mapping_json,))
         self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('backup_path', ?)", (os.path.abspath("./backups"),))
-        # 新增：模板根目录默认值 (默认为程序运行目录下的 templates 文件夹)
+        
         default_tmpl_root = os.path.abspath("./templates")
         if not os.path.exists(default_tmpl_root): os.makedirs(default_tmpl_root, exist_ok=True)
         self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('template_root', ?)", (default_tmpl_root,))
@@ -88,7 +91,7 @@ class Database:
         self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         self.conn.commit()
 
-    # --- 备份与恢复 ---
+    # --- 备份恢复 ---
     def backup_db(self, custom_path=None):
         try:
             target_dir = custom_path if custom_path else self.get_setting('backup_path')
@@ -116,7 +119,7 @@ class Database:
         except Exception as e:
             return False, f"恢复失败: {e}"
 
-    # --- 辅助方法 ---
+    # --- 辅助 ---
     def check_sn_exists(self, sn):
         self.cursor.execute("SELECT id FROM records WHERE sn=?", (sn,))
         return self.cursor.fetchone() is not None
