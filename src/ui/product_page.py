@@ -60,7 +60,6 @@ class ProductPage(QWidget):
                 self.table.insertRow(r_idx)
                 for c_idx, val in enumerate(row):
                     display_val = str(val)
-                    # 模板列只显示文件名（如果包含路径也只切文件名显示）
                     if c_idx == 10 and val:
                         display_val = os.path.basename(val)
                     item = QTableWidgetItem(display_val)
@@ -81,7 +80,11 @@ class ProductPage(QWidget):
                 self.refresh_data()
                 QMessageBox.information(self, "成功", "产品已添加")
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"保存失败: {e}")
+                err_msg = str(e)
+                if "UNIQUE constraint failed: products.sn4" in err_msg:
+                    QMessageBox.critical(self, "错误", f"保存失败：SN前四位 '{data[4]}' 已存在！\nSN前4位必须唯一。")
+                else:
+                    QMessageBox.critical(self, "错误", f"保存失败: {e}")
 
     def edit_product(self):
         row = self.table.currentRow()
@@ -107,7 +110,11 @@ class ProductPage(QWidget):
                 self.refresh_data()
                 QMessageBox.information(self, "成功", "产品已修改")
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"更新失败: {e}")
+                err_msg = str(e)
+                if "UNIQUE constraint failed: products.sn4" in err_msg:
+                    QMessageBox.critical(self, "错误", f"修改失败：SN前四位已存在！")
+                else:
+                    QMessageBox.critical(self, "错误", f"更新失败: {e}")
 
     def delete_product(self):
         row = self.table.currentRow()
@@ -129,40 +136,35 @@ class ProductPage(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "错误", str(e))
 
-    # --- 修复：Excel导入逻辑 ---
     def import_data(self):
         path, _ = QFileDialog.getOpenFileName(self, "导入", "", "Excel Files (*.xlsx *.xls)")
         if path:
             try:
                 df = pd.read_excel(path)
-                # 必填字段检查
-                if 'name' not in df.columns:
-                    QMessageBox.warning(self, "格式错误", "Excel必须包含 'name' 列")
+                if 'name' not in df.columns or 'sn4' not in df.columns:
+                    QMessageBox.warning(self, "格式错误", "Excel必须包含 'name' 和 'sn4' 列")
                     return
                 
                 success_count = 0
                 error_count = 0
                 
-                # 逐行遍历
                 for _, row in df.iterrows():
                     try:
-                        # 获取数据，处理空值
                         name = str(row['name']) if pd.notna(row['name']) else ""
-                        if not name: continue # 跳过空名
+                        sn4 = str(row.get('sn4', '')) if pd.notna(row.get('sn4')) else ""
+                        
+                        if not sn4: continue # SN4不能为空
 
                         spec = str(row.get('spec', '')) if pd.notna(row.get('spec')) else ""
                         model = str(row.get('model', '')) if pd.notna(row.get('model')) else ""
                         color = str(row.get('color', '')) if pd.notna(row.get('color')) else ""
-                        sn4 = str(row.get('sn4', '')) if pd.notna(row.get('sn4')) else ""
                         sku = str(row.get('sku', '')) if pd.notna(row.get('sku')) else ""
                         code69 = str(row.get('code69', '')) if pd.notna(row.get('code69')) else ""
                         qty = int(row.get('qty', 1)) if pd.notna(row.get('qty')) else 1
                         weight = str(row.get('weight', '')) if pd.notna(row.get('weight')) else ""
                         tmpl = str(row.get('template_path', '')) if pd.notna(row.get('template_path')) else ""
-                        # 如果Excel里没有rule_id，默认为0
                         rule_id = int(row.get('rule_id', 0)) if pd.notna(row.get('rule_id')) else 0
                         
-                        # 插入数据库
                         self.db.cursor.execute('''
                             INSERT INTO products (name, spec, model, color, sn4, sku, code69, qty, weight, template_path, rule_id) 
                             VALUES (?,?,?,?,?,?,?,?,?,?,?)
@@ -178,7 +180,7 @@ class ProductPage(QWidget):
                 
                 msg = f"导入完成。\n成功: {success_count} 条"
                 if error_count > 0:
-                    msg += f"\n失败/重复: {error_count} 条 (名称重复或格式错误)"
+                    msg += f"\n失败: {error_count} 条 (SN前4位重复)"
                 QMessageBox.information(self, "结果", msg)
                 
             except Exception as e:
@@ -192,13 +194,12 @@ class ProductDialog(QDialog):
         self.resize(450, 400)
         
         self.db = Database()
-        # 获取模板根目录
         self.template_root = self.db.get_setting('template_root')
         
         self.inputs = {}
         fields_map = [
             ("名称", 1), ("规格", 2), ("型号", 3), ("颜色", 4), 
-            ("SN前四位", 5), ("SKU", 6), ("69码", 7), ("重量", 9)
+            ("SN前四位 (唯一)", 5), ("SKU", 6), ("69码", 7), ("重量", 9)
         ]
         
         for label, idx in fields_map:
@@ -212,13 +213,12 @@ class ProductDialog(QDialog):
         if data: self.spin_qty.setValue(data[8])
         self.layout.addRow("每箱数量", self.spin_qty)
 
-        # 模板选择 (只显示文件名)
         self.tmpl_le = QLineEdit()
         self.tmpl_le.setPlaceholderText("请选择模板文件")
-        self.tmpl_le.setReadOnly(True) # 禁止手动输入，只能选，防止路径错误
+        self.tmpl_le.setReadOnly(True)
         if data and data[10]:
-            self.tmpl_le.setText(os.path.basename(data[10])) # 只显示文件名
-            self.full_tmpl_path = data[10] # 暂存完整路径/文件名
+            self.tmpl_le.setText(os.path.basename(data[10]))
+            self.full_tmpl_path = data[10]
         else:
             self.full_tmpl_path = ""
             
@@ -230,7 +230,6 @@ class ProductDialog(QDialog):
         tmpl_layout.addWidget(btn_tmpl)
         self.layout.addRow("打印模板", tmpl_layout)
 
-        # 箱号规则
         self.combo_rule = QComboBox()
         self.db.cursor.execute("SELECT id, name FROM box_rules")
         rules = self.db.cursor.fetchall()
@@ -249,13 +248,11 @@ class ProductDialog(QDialog):
         self.layout.addRow(btn_save)
 
     def sel_tmpl(self):
-        # 从设置的根目录打开选择框
         start_dir = self.template_root if self.template_root and os.path.exists(self.template_root) else ""
         path, _ = QFileDialog.getOpenFileName(self, "选择模板", start_dir, "Bartender (*.btw)")
         if path:
             filename = os.path.basename(path)
             self.tmpl_le.setText(filename)
-            # 存数据库时，只存文件名（相对路径）
             self.full_tmpl_path = filename
 
     def get_data(self):
@@ -264,11 +261,11 @@ class ProductDialog(QDialog):
             self.inputs["规格"].text(),
             self.inputs["型号"].text(),
             self.inputs["颜色"].text(),
-            self.inputs["SN前四位"].text(),
+            self.inputs["SN前四位 (唯一)"].text(),
             self.inputs["SKU"].text(),
             self.inputs["69码"].text(),
             self.spin_qty.value(),
             self.inputs["重量"].text(),
-            self.full_tmpl_path, # 返回文件名
+            self.full_tmpl_path,
             self.combo_rule.currentData()
-        )
+      )
