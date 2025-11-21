@@ -13,7 +13,7 @@ class SettingsPage(QWidget):
         super().__init__()
         self.db = Database()
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 5, 10, 5) # 减少顶部留白
+        main_layout.setContentsMargins(5, 5, 5, 5)
 
         self.tabs = QTabWidget()
         
@@ -27,35 +27,62 @@ class SettingsPage(QWidget):
         
         self.tab_backup = QWidget()
         self.init_backup_tab()
-        self.tabs.addTab(self.tab_backup, "3. 数据维护 & 设置")
+        self.tabs.addTab(self.tab_backup, "3. 数据维护")
 
         main_layout.addWidget(self.tabs)
         self.refresh_data()
 
-    # --- 1. 箱号规则 ---
     def init_rules_tab(self):
         layout = QVBoxLayout(self.tab_rules)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(10, 5, 10, 5)
         
-        help_group = QGroupBox("规则编写向导")
-        help_layout = QVBoxLayout(help_group)
+        # 去掉GroupBox的标题和边框，利用TextEdit自带边框，更加紧凑
         help_txt = QTextEdit()
         help_txt.setReadOnly(True)
-        help_txt.setMaximumHeight(120)
+        help_txt.setMaximumHeight(220) # 增加高度以显示详细内容
         help_txt.setHtml("""
-        <p style='font-size:12px'><b>变量代码：</b> {SN4}:SN前4位 | {Y1}:年1位 | {Y2}:年2位 | {M1}:月代码 | {MM}:月2位 | {DD}:日2位 | {SEQ5}:5位流水号</p>
+        <style>
+            body { font-family: sans-serif; font-size: 13px; line-height: 1.4; }
+            h4 { margin: 5px 0; color: #2980b9; }
+            code { background-color: #eee; padding: 2px 4px; border-radius: 3px; color: #c0392b; font-weight: bold; }
+            ul { margin: 5px 0 10px 20px; padding: 0; }
+        </style>
+        <h4>📖 箱号规则编写说明</h4>
+        <p>您可以组合以下代码来定义箱号格式，系统打印时会自动替换为实际值。</p>
+        
+        <h4>1. 基础变量</h4>
+        <ul>
+            <li><code>{SN4}</code> : 产品SN的前4位 (如: 8001)</li>
+            <li><code>{SEQ5}</code> : 5位流水号，每月/每批次自动重置 (如: 00001)</li>
+        </ul>
+
+        <h4>2. 时间变量 (假设当前是 2025年11月21日)</h4>
+        <ul>
+            <li><code>{Y1}</code> : 年份最后1位 (5)</li>
+            <li><code>{Y2}</code> : 年份后2位 (25)</li>
+            <li><code>{M1}</code> : 月份代码 (1-9, A=10月, B=11月, C=12月) -> 本月为 B</li>
+            <li><code>{MM}</code> : 月份数字 (11)</li>
+            <li><code>{DD}</code> : 日期数字 (21)</li>
+        </ul>
+        
+        <h4>📝 常用示例</h4>
+        <ul>
+            <li>规则: <code>MZXH{SN4}{Y1}{M1}{SEQ5}</code> <br>结果: <b>MZXH80015B00001</b></li>
+            <li>规则: <code>{Y2}{MM}{DD}-{SEQ5}</code> <br>结果: <b>251121-00001</b></li>
+        </ul>
         """)
-        help_layout.addWidget(help_txt)
-        layout.addWidget(help_group)
+        layout.addWidget(help_txt)
 
         # 添加区
         add_layout = QHBoxLayout()
         self.rule_name = QLineEdit()
-        self.rule_name.setPlaceholderText("规则名称")
+        self.rule_name.setPlaceholderText("规则名称 (如: CB规则)")
         self.rule_fmt = QLineEdit()
-        self.rule_fmt.setPlaceholderText("规则格式")
-        btn_add = QPushButton("添加")
+        self.rule_fmt.setPlaceholderText("格式 (如: MZXH{SN4}{Y1}{M1}{SEQ5})")
+        btn_add = QPushButton("添加规则")
+        btn_add.setStyleSheet("background-color: #2ecc71; color: white; font-weight: bold;")
         btn_add.clicked.connect(self.add_rule)
+        
         add_layout.addWidget(QLabel("名称:"))
         add_layout.addWidget(self.rule_name)
         add_layout.addWidget(QLabel("格式:"))
@@ -100,12 +127,11 @@ class SettingsPage(QWidget):
         btn_box.addWidget(btn_save)
         layout.addLayout(btn_box)
 
-    # --- 3. 数据维护 & 设置 ---
+    # --- 3. 数据维护 ---
     def init_backup_tab(self):
         layout = QVBoxLayout(self.tab_backup)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        # 模板路径设置 (新增)
         tmpl_group = QGroupBox("Bartender 模板文件根目录")
         tmpl_layout = QHBoxLayout(tmpl_group)
         self.txt_tmpl_root = QLineEdit()
@@ -116,7 +142,6 @@ class SettingsPage(QWidget):
         tmpl_layout.addWidget(btn_tmpl_sel)
         layout.addWidget(tmpl_group)
 
-        # 备份路径
         path_group = QGroupBox("数据备份目录")
         path_layout = QHBoxLayout(path_group)
         self.txt_backup_path = QLineEdit()
@@ -127,7 +152,6 @@ class SettingsPage(QWidget):
         path_layout.addWidget(btn_sel)
         layout.addWidget(path_group)
         
-        # 操作
         op_group = QGroupBox("数据库操作")
         op_layout = QHBoxLayout(op_group)
         btn_bk = QPushButton("立即备份")
@@ -140,7 +164,7 @@ class SettingsPage(QWidget):
         
         layout.addStretch()
 
-    # --- 逻辑 ---
+    # --- 逻辑函数 (保持不变) ---
     def refresh_data(self):
         self.load_rules()
         self.load_mapping_to_table()
