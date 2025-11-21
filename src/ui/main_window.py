@@ -8,14 +8,24 @@ from src.ui.product_page import ProductPage
 from src.ui.print_page import PrintPage
 from src.ui.history_page import HistoryPage
 from src.ui.settings_page import SettingsPage
+from src.database import Database # 导入Database以便在关闭时清理
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"外箱标签打印程序 {APP_VERSION}")
         self.resize(1200, 800)
-        self.setWindowIcon(QIcon(get_resource_path("assets/icon.ico")))
         
+        # 尝试加载图标，如果失败则不设置
+        try:
+            icon_path = get_resource_path("assets/icon.ico")
+            if icon_path and QIcon(icon_path).isNull():
+                print(f"Warning: Icon file not found or invalid: {icon_path}")
+            else:
+                self.setWindowIcon(QIcon(icon_path))
+        except Exception as e:
+            print(f"Error loading icon: {e}")
+
         # 主容器
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -28,13 +38,13 @@ class MainWindow(QMainWindow):
         nav_bar.setStyleSheet("background-color: #2c3e50; min-width: 200px;")
         nav_layout = QVBoxLayout(nav_bar)
         
-        # Logo
+        # Logo - 字体大一号
         logo_label = QLabel("标签打印")
         logo_label.setAlignment(Qt.AlignCenter)
-        logo_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold; padding: 20px;")
+        logo_label.setStyleSheet("color: white; font-size: 28px; font-weight: bold; padding: 20px;") # 字体加大
         nav_layout.addWidget(logo_label)
 
-        # 按钮样式
+        # 按钮样式 - 增加悬浮和选中橙色效果
         btn_style = """
             QPushButton {
                 color: white;
@@ -45,10 +55,11 @@ class MainWindow(QMainWindow):
                 font-size: 16px;
             }
             QPushButton:hover {
-                background-color: #34495e;
+                background-color: #34495e; /* 悬浮效果 */
             }
             QPushButton:checked {
-                background-color: #3498db;
+                background-color: #e67e22; /* 选中后名称框变橙色 */
+                font-weight: bold;
             }
         """
 
@@ -68,7 +79,7 @@ class MainWindow(QMainWindow):
         
         # 版本信息
         ver_label = QLabel(APP_VERSION)
-        ver_label.setStyleSheet("color: #7f8c8d; padding: 10px;")
+        ver_label.setStyleSheet("color: #7f8c8d; padding: 10px; text-align: center;")
         nav_layout.addWidget(ver_label)
 
         main_layout.addWidget(nav_bar)
@@ -99,8 +110,18 @@ class MainWindow(QMainWindow):
 
     def switch_page(self, index):
         self.stack.setCurrentIndex(index)
-        # 刷新页面数据
+        # 刷新页面数据 (每次切换时刷新，确保数据最新)
         if index == 0: self.product_page.refresh_data()
-        if index == 1: self.print_page.refresh_data()
-        if index == 2: self.history_page.refresh_data()
-        if index == 3: self.settings_page.refresh_data()
+        elif index == 1: self.print_page.refresh_data()
+        elif index == 2: self.history_page.refresh_data()
+        elif index == 3: self.settings_page.refresh_data()
+
+    def closeEvent(self, event):
+        """关闭窗口时释放Bartender资源"""
+        if hasattr(self, 'print_page') and self.print_page.printer:
+            self.print_page.printer.quit()
+        # 关闭数据库连接
+        if hasattr(self, 'db') and self.db: # MainWindow 并没有直接持有db实例，各个页面持有
+             pass # 暂时不用在这里显式关闭，因为每个页面都创建了自己的DB实例。
+                  # 更好的做法是传递一个共享的DB实例，但这会涉及到重构
+        super().closeEvent(event)
