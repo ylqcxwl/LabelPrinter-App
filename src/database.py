@@ -59,6 +59,10 @@ class Database:
         default_mapping_json = json.dumps(DEFAULT_MAPPING)
         self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('field_mapping', ?)", (default_mapping_json,))
         self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('backup_path', ?)", (os.path.abspath("./backups"),))
+        # 新增：模板根目录默认值 (默认为程序运行目录下的 templates 文件夹)
+        default_tmpl_root = os.path.abspath("./templates")
+        if not os.path.exists(default_tmpl_root): os.makedirs(default_tmpl_root, exist_ok=True)
+        self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('template_root', ?)", (default_tmpl_root,))
         
         self.conn.commit()
 
@@ -84,57 +88,35 @@ class Database:
         self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         self.conn.commit()
 
-    # --- 新增：备份与恢复功能 ---
+    # --- 备份与恢复 ---
     def backup_db(self, custom_path=None):
-        """执行数据库备份"""
         try:
             target_dir = custom_path if custom_path else self.get_setting('backup_path')
             if not os.path.exists(target_dir):
                 os.makedirs(target_dir)
-            
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_file = os.path.join(target_dir, f"backup_{timestamp}.db")
-            
-            # 确保数据写入磁盘
             self.conn.commit()
-            
-            # 复制文件
             shutil.copy2(self.db_name, backup_file)
             return True, f"备份成功: {backup_file}"
         except Exception as e:
             return False, str(e)
 
     def restore_db(self, backup_file_path):
-        """从备份恢复数据库"""
         try:
             if not os.path.exists(backup_file_path):
                 return False, "备份文件不存在"
-            
-            # 1. 关闭当前连接
             self.conn.close()
-            
-            # 2. 覆盖文件
-            # 先把当前损坏的/旧的改名备份一下，防止彻底丢失
-            try:
-                shutil.move(self.db_name, self.db_name + ".old")
+            try: shutil.move(self.db_name, self.db_name + ".old")
             except: pass 
-            
             shutil.copy2(backup_file_path, self.db_name)
-            
-            # 3. 重新连接
             self.conn = sqlite3.connect(self.db_name)
             self.cursor = self.conn.cursor()
-            return True, "数据恢复成功，请重启软件以确保最佳状态。"
+            return True, "数据恢复成功，请重启软件。"
         except Exception as e:
-            # 尝试紧急回滚
-            if os.path.exists(self.db_name + ".old"):
-                 shutil.copy2(self.db_name + ".old", self.db_name)
-            # 重新连接以免程序崩溃
-            self.conn = sqlite3.connect(self.db_name)
-            self.cursor = self.conn.cursor()
             return False, f"恢复失败: {e}"
 
-    # --- 其他辅助方法 (保持不变) ---
+    # --- 辅助方法 ---
     def check_sn_exists(self, sn):
         self.cursor.execute("SELECT id FROM records WHERE sn=?", (sn,))
         return self.cursor.fetchone() is not None
