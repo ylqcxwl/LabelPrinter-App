@@ -13,7 +13,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"外箱标签打印程序 {APP_VERSION}")
-        self.resize(1200, 800)
+        self.resize(1280, 850)
         
         try:
             icon_path = get_resource_path("assets/icon.ico")
@@ -26,37 +26,38 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # --- 左侧导航栏优化 ---
+        # --- 左侧导航栏 ---
         nav_bar = QFrame()
-        # 1. 宽度调整为 140px
-        nav_bar.setStyleSheet("background-color: #2c3e50; min-width: 140px; max-width: 140px;")
+        nav_bar.setStyleSheet("background-color: #2c3e50;")
+        nav_bar.setFixedWidth(150) # 固定宽度
+        
         nav_layout = QVBoxLayout(nav_bar)
-        nav_layout.setContentsMargins(0, 20, 0, 20) # 上下留白
+        nav_layout.setContentsMargins(0, 20, 0, 20) 
+        nav_layout.setSpacing(0) # 按钮紧挨着
         
         logo_label = QLabel("标签打印")
         logo_label.setAlignment(Qt.AlignCenter)
-        logo_label.setStyleSheet("color: white; font-size: 22px; font-weight: bold; margin-bottom: 20px;")
+        logo_label.setStyleSheet("color: white; font-size: 22px; font-weight: bold; margin-bottom: 30px;")
         nav_layout.addWidget(logo_label)
 
-        # 2. 按钮样式优化：居中，选中变橙色
+        # 按钮样式 - 修复UI显示问题
         btn_style = """
             QPushButton {
-                color: #ecf0f1;
+                color: #bdc3c7;
                 background-color: transparent;
                 border: none;
-                padding: 15px 5px;
-                text-align: center; /* 文字居中 */
+                padding: 20px 0px;
+                text-align: center;
                 font-size: 15px;
-                border-left: 5px solid transparent; /* 左侧预留色条 */
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #34495e;
+                color: white;
             }
             QPushButton:checked {
-                background-color: #2c3e50;
-                color: #e67e22; /* 选中文字变橙 */
-                border-left: 5px solid #e67e22; /* 左侧橙色条 */
-                font-weight: bold;
+                background-color: #e67e22; /* 整个背景变橙色，避免边框渲染问题 */
+                color: white;
             }
         """
 
