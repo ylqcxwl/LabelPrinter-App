@@ -1,72 +1,116 @@
-import sys
-from PyQt5.QtWidgets import QMainWindow, QTabWidget, QApplication
-from src.database import Database
-from src.ui.print_page import PrintPage
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                             QPushButton, QStackedWidget, QLabel, QFrame)
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
+from src.config import get_resource_path
+from src.version import APP_VERSION
 from src.ui.product_page import ProductPage
-from src.ui.setting_page import SettingPage
-from src.ui.rule_page import RulePage
-from src.ui.sn_rule_page import SnRulePage
-from src.ui.record_page import RecordPage
+from src.ui.print_page import PrintPage
+from src.ui.history_page import HistoryPage
+from src.ui.settings_page import SettingsPage
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.db = Database()
+        self.setWindowTitle(f"外箱标签打印程序 {APP_VERSION}")
+        self.resize(1280, 850)
         
-        # --- 新增：应用启动时自动备份 ---
-        ok, msg = self.db.backup_db(manual=False)
-        if not ok:
-             # 如果自动备份失败，仅在控制台打印警告
-             print(f"启动时自动备份失败: {msg}") 
-        # --- 自动备份结束 ---
-        
-        self.init_ui()
+        try:
+            icon_path = get_resource_path("assets/icon.ico")
+            if icon_path: self.setWindowIcon(QIcon(icon_path))
+        except: pass
 
-    def init_ui(self):
-        self.setWindowTitle("标签打印管理工具")
-        self.setGeometry(100, 100, 1200, 800)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # --- 左侧导航栏 ---
+        nav_bar = QFrame()
+        nav_bar.setStyleSheet("background-color: #2c3e50;")
+        nav_bar.setFixedWidth(150) # 固定宽度
         
-        self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
+        nav_layout = QVBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(0, 20, 0, 20) 
+        nav_layout.setSpacing(0) # 按钮紧挨着
         
-        # 创建页面实例
-        self.print_page = PrintPage()
+        logo_label = QLabel("标签打印")
+        logo_label.setAlignment(Qt.AlignCenter)
+        logo_label.setStyleSheet("color: white; font-size: 22px; font-weight: bold; margin-bottom: 30px;")
+        nav_layout.addWidget(logo_label)
+
+        # 按钮样式 - 修复UI显示问题
+        btn_style = """
+            QPushButton {
+                color: #bdc3c7;
+                background-color: transparent;
+                border: none;
+                padding: 20px 0px;
+                text-align: center;
+                font-size: 15px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #34495e;
+                color: white;
+            }
+            QPushButton:checked {
+                background-color: #e67e22; /* 整个背景变橙色，避免边框渲染问题 */
+                color: white;
+            }
+        """
+
+        self.btn_product = QPushButton("📦 产品管理")
+        self.btn_print = QPushButton("🖨️ 打印标签")
+        self.btn_history = QPushButton("📜 打印记录")
+        self.btn_settings = QPushButton("⚙️ 设    置")
+        
+        for btn in [self.btn_product, self.btn_print, self.btn_history, self.btn_settings]:
+            btn.setCheckable(True)
+            btn.setAutoExclusive(True)
+            btn.setStyleSheet(btn_style)
+            btn.setCursor(Qt.PointingHandCursor)
+            nav_layout.addWidget(btn)
+
+        nav_layout.addStretch()
+        
+        ver_label = QLabel(APP_VERSION)
+        ver_label.setAlignment(Qt.AlignCenter)
+        ver_label.setStyleSheet("color: #7f8c8d; padding: 10px; font-size: 10px;")
+        nav_layout.addWidget(ver_label)
+
+        main_layout.addWidget(nav_bar)
+
+        # 右侧内容
+        self.stack = QStackedWidget()
+        main_layout.addWidget(self.stack)
+
         self.product_page = ProductPage()
-        self.setting_page = SettingPage(self.db)
-        self.rule_page = RulePage()
-        self.sn_rule_page = SnRulePage()
-        self.record_page = RecordPage()
-        
-        # 添加标签页
-        self.tabs.addTab(self.print_page, "打印标签")
-        self.tabs.addTab(self.product_page, "产品管理")
-        self.tabs.addTab(self.rule_page, "箱号规则")
-        self.tabs.addTab(self.sn_rule_page, "SN规则")
-        self.tabs.addTab(self.record_page, "打印记录")
-        self.tabs.addTab(self.setting_page, "系统设置")
-        
-        # 绑定页面刷新事件
-        self.tabs.currentChanged.connect(self.tab_changed)
+        self.print_page = PrintPage()
+        self.history_page = HistoryPage()
+        self.settings_page = SettingsPage()
 
-    def tab_changed(self, index):
-        current_widget = self.tabs.widget(index)
-        # 仅刷新需要数据的页面，避免不必要的数据库操作
-        if isinstance(current_widget, PrintPage):
-            current_widget.refresh_data()
-        elif isinstance(current_widget, ProductPage):
-            current_widget.refresh_data()
-        elif isinstance(current_widget, RulePage):
-            current_widget.refresh_data()
-        elif isinstance(current_widget, SnRulePage):
-            current_widget.refresh_data()
-        elif isinstance(current_widget, RecordPage):
-            current_widget.refresh_data()
+        self.stack.addWidget(self.product_page)
+        self.stack.addWidget(self.print_page)
+        self.stack.addWidget(self.history_page)
+        self.stack.addWidget(self.settings_page)
 
-def main():
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
+        self.btn_product.clicked.connect(lambda: self.switch_page(0))
+        self.btn_print.clicked.connect(lambda: self.switch_page(1))
+        self.btn_history.clicked.connect(lambda: self.switch_page(2))
+        self.btn_settings.clicked.connect(lambda: self.switch_page(3))
 
-if __name__ == '__main__':
-    main()
+        self.btn_product.click()
+
+    def switch_page(self, index):
+        self.stack.setCurrentIndex(index)
+        if index == 0: self.product_page.refresh_data()
+        elif index == 1: self.print_page.refresh_data()
+        elif index == 2: self.history_page.refresh_data()
+        elif index == 3: self.settings_page.refresh_data()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'print_page') and self.print_page.printer:
+            self.print_page.printer.quit()
+        super().closeEvent(event)
