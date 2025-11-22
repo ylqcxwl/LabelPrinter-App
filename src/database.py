@@ -14,7 +14,6 @@ class Database:
 
     def setup_db(self):
         # --- 表结构定义 ---
-        # 修改点：name 不再 UNIQUE，sn4 改为 UNIQUE
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +23,8 @@ class Database:
                 sku TEXT, code69 TEXT,
                 qty INTEGER, weight TEXT,
                 template_path TEXT,
-                rule_id INTEGER DEFAULT 0
+                rule_id INTEGER DEFAULT 0,
+                sn_rule_id INTEGER DEFAULT 0
             )
         ''')
         
@@ -36,6 +36,17 @@ class Database:
                 current_seq INTEGER DEFAULT 0
             )
         ''')
+        
+        # 新增：SN规则表
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sn_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                rule_string TEXT NOT NULL,
+                length INTEGER DEFAULT 0
+            )
+        ''')
+
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,11 +54,13 @@ class Database:
                 code69 TEXT, sn TEXT, box_no TEXT, prod_date TEXT, print_date TEXT
             )
         ''')
+        
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY, value TEXT
             )
         ''')
+        
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS box_counters (
                 key TEXT PRIMARY KEY, current_val INTEGER
@@ -56,6 +69,7 @@ class Database:
         
         # 补充字段检查
         self._check_and_add_column('products', 'rule_id', 'INTEGER DEFAULT 0')
+        self._check_and_add_column('products', 'sn_rule_id', 'INTEGER DEFAULT 0') # 新增
         self._check_and_add_column('box_rules', 'rule_string', 'TEXT')
         
         # 初始化设置
