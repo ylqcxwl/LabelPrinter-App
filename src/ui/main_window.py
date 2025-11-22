@@ -62,9 +62,9 @@ class MainWindow(QMainWindow):
         """
 
         self.btn_product = QPushButton("📦 产品管理")
-        self.btn_print = QPushButton("🖨️ 打印标签")
+        self.btn_print = QPushButton("🖨️打印标签")
         self.btn_history = QPushButton("📜 打印记录")
-        self.btn_settings = QPushButton("⚙️ 设置")
+        self.btn_settings = QPushButton("⚙️ 设    置")
         
         for btn in [self.btn_product, self.btn_print, self.btn_history, self.btn_settings]:
             btn.setCheckable(True)
