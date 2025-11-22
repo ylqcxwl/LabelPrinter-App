@@ -35,14 +35,13 @@ class PrintPage(QWidget):
         self.input_search.textChanged.connect(self.filter_products)
         
         self.table_product = QTableWidget()
-        # 修改：增加规格和颜色，共6列
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table_product.setMaximumHeight(150) # 稍微调高一点以适应更多列
+        self.table_product.setMaximumHeight(150)
         self.table_product.itemClicked.connect(self.on_product_select)
         
         main_layout.addLayout(h_search)
@@ -132,19 +131,16 @@ class PrintPage(QWidget):
             if k in p['name'].lower() or k in p['code69'].lower():
                 r = self.table_product.rowCount(); self.table_product.insertRow(r)
                 it = QTableWidgetItem(p['name']); it.setData(Qt.UserRole, p)
-                
-                # 填充6列数据
-                self.table_product.setItem(r,0,it) # 名称
-                self.table_product.setItem(r,1,QTableWidgetItem(p.get('spec',''))) # 规格
-                self.table_product.setItem(r,2,QTableWidgetItem(p.get('color',''))) # 颜色
-                self.table_product.setItem(r,3,QTableWidgetItem(p['code69'])) # 69码
-                self.table_product.setItem(r,4,QTableWidgetItem(p['sn4'])) # SN4
-                
+                self.table_product.setItem(r,0,it)
+                self.table_product.setItem(r,1,QTableWidgetItem(p.get('spec','')))
+                self.table_product.setItem(r,2,QTableWidgetItem(p.get('color','')))
+                self.table_product.setItem(r,3,QTableWidgetItem(p['code69']))
+                self.table_product.setItem(r,4,QTableWidgetItem(p['sn4']))
                 rn = "无"
                 if p.get('rule_id'):
                     c=self.db.conn.cursor(); c.execute("SELECT name FROM box_rules WHERE id=?",(p['rule_id'],))
                     res=c.fetchone(); rn=res[0] if res else "无"
-                self.table_product.setItem(r,5,QTableWidgetItem(rn)) # 箱规
+                self.table_product.setItem(r,5,QTableWidgetItem(rn))
 
     def on_product_select(self, item):
         p = self.table_product.item(item.row(),0).data(Qt.UserRole)
@@ -197,15 +193,41 @@ class PrintPage(QWidget):
         except: pass
 
     def validate_sn(self, sn):
-        if not sn.startswith(self.current_product['sn4']): return False, "SN前4位不符"
+        # 1. 基础前缀校验
+        prefix = str(self.current_product.get('sn4', '')).strip().upper()
+        if not sn.startswith(prefix): return False, f"SN前4位不符 (需以 {prefix} 开头)"
+        
+        # 2. 规则校验
         if self.current_sn_rule:
-            fmt, mlen = self.current_sn_rule['fmt'], self.current_sn_rule['len']
-            if mlen>0 and len(sn)!=mlen: return False, f"长度需{mlen}位"
-            pat = fmt.replace("{SN4}", self.current_product['sn4']).replace("{BATCH}", self.combo_repair.currentText())
-            pat = re.sub(r"\{SEQ(\d+)\}", lambda m: f"\\d{{{m.group(1)}}}", pat)
+            fmt = self.current_sn_rule['fmt']
+            mlen = self.current_sn_rule['len']
+            
+            # 长度校验
+            if mlen > 0 and len(sn) != mlen: return False, f"长度错误 (需{mlen}位, 实{len(sn)}位)"
+            
+            # --- 核心修复：安全正则生成 ---
+            # 步骤1：先用占位符保护变量
+            temp_pat = fmt.replace("{SN4}", "___SN4___") \
+                          .replace("{BATCH}", "___BATCH___")
+            # 保护 {SEQn}
+            temp_pat = re.sub(r"\{SEQ(\d+)\}", r"___SEQ\1___", temp_pat)
+            
+            # 步骤2：转义所有字符（处理 / + . 等特殊字符）
+            safe_pat = re.escape(temp_pat)
+            
+            # 步骤3：还原变量为正则代码
+            # 还原SN4 (也要转义实际值，防止SN本身含特殊字符)
+            safe_pat = safe_pat.replace("___SN4___", re.escape(prefix))
+            # 还原批次
+            safe_pat = safe_pat.replace("___BATCH___", re.escape(self.combo_repair.currentText()))
+            # 还原SEQ (\d{n})
+            safe_pat = re.sub(r"___SEQ(\d+)___", lambda m: f"\\d{{{m.group(1)}}}", safe_pat)
+            
             try:
-                if not re.match(f"^{pat}$", sn): return False, "格式校验不通过"
-            except: pass
+                if not re.match(f"^{safe_pat}$", sn): return False, "格式校验不通过"
+            except: 
+                return False, "规则解析错误"
+                
         return True, ""
 
     def on_sn_scan(self):
