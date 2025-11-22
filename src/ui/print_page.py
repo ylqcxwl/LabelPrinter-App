@@ -193,9 +193,12 @@ class PrintPage(QWidget):
         except: pass
 
     def validate_sn(self, sn):
-        # 1. 基础前缀校验
-        prefix = str(self.current_product.get('sn4', '')).strip().upper()
-        if not sn.startswith(prefix): return False, f"SN前4位不符 (需以 {prefix} 开头)"
+        # 1. 基础前缀校验 (去除空白)
+        sn = sn.strip()
+        prefix = str(self.current_product.get('sn4', '')).strip()
+        
+        if not sn.startswith(prefix): 
+            return False, f"前缀不符！\n要求以 {prefix} 开头\n实际: {sn}"
         
         # 2. 规则校验
         if self.current_sn_rule:
@@ -203,36 +206,40 @@ class PrintPage(QWidget):
             mlen = self.current_sn_rule['len']
             
             # 长度校验
-            if mlen > 0 and len(sn) != mlen: return False, f"长度错误 (需{mlen}位, 实{len(sn)}位)"
+            if mlen > 0 and len(sn) != mlen: 
+                return False, f"长度错误！\n要求: {mlen}位\n实际: {len(sn)}位"
             
-            # --- 核心修复：安全正则生成 ---
-            # 步骤1：先用占位符保护变量
+            # --- 增强的正则生成逻辑 (安全模式) ---
+            # 1. 先用唯一占位符替换变量
             temp_pat = fmt.replace("{SN4}", "___SN4___") \
                           .replace("{BATCH}", "___BATCH___")
-            # 保护 {SEQn}
+            
+            # 2. 保护 {SEQn} 结构 (将其转换为占位符)
             temp_pat = re.sub(r"\{SEQ(\d+)\}", r"___SEQ\1___", temp_pat)
             
-            # 步骤2：转义所有字符（处理 / + . 等特殊字符）
+            # 3. 转义所有剩余字符 (这样 / + - 等符号就安全了)
             safe_pat = re.escape(temp_pat)
             
-            # 步骤3：还原变量为正则代码
-            # 还原SN4 (也要转义实际值，防止SN本身含特殊字符)
+            # 4. 还原变量为正则代码
+            # 还原 SN4 (也进行转义，防止SN本身包含特殊字符)
             safe_pat = safe_pat.replace("___SN4___", re.escape(prefix))
-            # 还原批次
+            # 还原 Batch
             safe_pat = safe_pat.replace("___BATCH___", re.escape(self.combo_repair.currentText()))
-            # 还原SEQ (\d{n})
+            # 还原 SEQn (\d{n})
             safe_pat = re.sub(r"___SEQ(\d+)___", lambda m: f"\\d{{{m.group(1)}}}", safe_pat)
             
             try:
-                if not re.match(f"^{safe_pat}$", sn): return False, "格式校验不通过"
-            except: 
-                return False, "规则解析错误"
+                if not re.match(f"^{safe_pat}$", sn): 
+                    # 构造详细报错信息
+                    return False, f"格式不符！\n规则格式: {fmt}\n当前批次: {self.combo_repair.currentText()}\nSN: {sn}"
+            except Exception as e: 
+                return False, f"规则解析错误: {e}"
                 
         return True, ""
 
     def on_sn_scan(self):
         if not self.current_product: return
-        sn = self.input_sn.text().strip().upper(); self.input_sn.clear()
+        sn = self.input_sn.text().strip(); self.input_sn.clear() # 移除 upper() 保持原样，或根据需求保留
         if not sn: return
         
         if sn in [x[0] for x in self.current_sn_list]: return QMessageBox.warning(self,"错","重复扫描")
