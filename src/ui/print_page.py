@@ -9,7 +9,7 @@ from src.bartender import BartenderPrinter
 from src.config import DEFAULT_MAPPING
 import datetime
 import os
-import re  # <--- 关键修复：添加缺失的 'import re'
+import re
 import traceback
 
 class PrintPage(QWidget):
@@ -194,11 +194,7 @@ class PrintPage(QWidget):
 
     # --- 核心修复：更健壮的正则生成逻辑 ---
     def validate_sn(self, sn):
-        # 1. 彻底清理输入字符串，去除所有不可见的非打印字符 (包括 \n, \r, \t, \u200b 等)
-        # 使用 re.sub 清理非字母数字和空白字符，只针对尾部
-        sn = re.sub(r'[\s\W\u200b\ufeff]+$', '', sn)
-        sn = sn.strip() 
-
+        sn = sn.strip()
         prefix = str(self.current_product.get('sn4', '')).strip()
         
         if not sn.startswith(prefix): 
@@ -212,6 +208,8 @@ class PrintPage(QWidget):
                 return False, f"长度错误！\n要求: {mlen}位\n实际: {len(sn)}位"
             
             # 使用正则分割字符串为: [普通文本, 变量, 普通文本, 变量...]
+            # (\{\w+\}) 匹配 {SN4} {BATCH}
+            # (\{SEQ\d+\}) 匹配 {SEQ7}
             parts = re.split(r'(\{SN4\}|\{BATCH\}|\{SEQ\d+\})', fmt)
             regex_parts = []
             
@@ -223,7 +221,7 @@ class PrintPage(QWidget):
                 elif part == "{BATCH}":
                     regex_parts.append(re.escape(current_batch))
                 elif part.startswith("{SEQ") and part.endswith("}"):
-                    # 使用 re.search 安全地提取数字部分
+                    # 使用 re.search 安全地提取数字部分，避免硬编码切片错误
                     match = re.search(r'\{SEQ(\d+)\}', part)
                     if match:
                         try:
@@ -232,17 +230,16 @@ class PrintPage(QWidget):
                         except ValueError:
                             return False, f"规则解析错误：序列号长度({match.group(1)})不是有效数字"
                     else:
+                        # 理论上不会执行到此，但作为安全冗余
                         return False, f"规则解析错误：无效的序列标签格式 ({part})"
                 else:
                     # 普通文本 (包括 /, -, + 等)，必须转义
                     if part:
-                        # 确保转义，防止规则中的字面量被解释为正则语法
                         regex_parts.append(re.escape(part))
             
             full_regex = "^" + "".join(regex_parts) + "$"
             
             try:
-                # 再次匹配，理论上清理后的SN应该可以匹配
                 if not re.match(full_regex, sn): 
                     return False, f"格式不符！\nSN规则: {fmt}\nSN: {sn}"
             except Exception as e: 
@@ -255,9 +252,6 @@ class PrintPage(QWidget):
         sn = self.input_sn.text().strip(); self.input_sn.clear() 
         if not sn: return
         
-        # 强制将输入 SN 转换为大写，确保一致性
-        sn = sn.upper()
-
         if sn in [x[0] for x in self.current_sn_list]: return QMessageBox.warning(self,"错","重复扫描")
         if self.db.check_sn_exists(sn): return QMessageBox.warning(self,"错","已打印过")
         
