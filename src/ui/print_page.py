@@ -28,27 +28,28 @@ class PrintPage(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(5,5,5,5)
 
-        # 1. 搜索栏
+        # 1. 搜索栏与列表
         h_search = QHBoxLayout()
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 搜索产品...")
         self.input_search.textChanged.connect(self.filter_products)
         
         self.table_product = QTableWidget()
-        self.table_product.setColumnCount(4)
-        self.table_product.setHorizontalHeaderLabels(["名称", "69码", "SN前4", "箱规"])
+        # 修改：增加规格和颜色，共6列
+        self.table_product.setColumnCount(6)
+        self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table_product.setMaximumHeight(100)
+        self.table_product.setMaximumHeight(150) # 稍微调高一点以适应更多列
         self.table_product.itemClicked.connect(self.on_product_select)
         
         main_layout.addLayout(h_search)
         main_layout.addWidget(self.input_search)
         main_layout.addWidget(self.table_product)
 
-        # 2. 详细信息 (新增模板名称和规则名称)
+        # 2. 详细信息
         grp = QGroupBox("产品详情")
         gl = QGridLayout(grp)
         gl.setContentsMargins(5,5,5,5)
@@ -56,10 +57,8 @@ class PrintPage(QWidget):
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_spec = QLabel("--"); self.lbl_model = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_qty = QLabel("--")
-        # 新增Label
         self.lbl_rule_name = QLabel("无"); self.lbl_tmpl_name = QLabel("无")
 
-        # 样式
         style = "color: #2980b9; font-weight: bold;"
         for l in [self.lbl_name, self.lbl_sn4, self.lbl_spec, self.lbl_model, self.lbl_code69, self.lbl_qty, self.lbl_rule_name, self.lbl_tmpl_name]:
             l.setStyleSheet(style)
@@ -70,9 +69,8 @@ class PrintPage(QWidget):
         gl.addWidget(QLabel("SN前4:"),1,0); gl.addWidget(self.lbl_sn4,1,1)
         gl.addWidget(QLabel("69码:"),1,2); gl.addWidget(self.lbl_code69,1,3)
         gl.addWidget(QLabel("整箱数:"),1,4); gl.addWidget(self.lbl_qty,1,5)
-        # 新增行
         gl.addWidget(QLabel("箱号规则:"),2,0); gl.addWidget(self.lbl_rule_name,2,1)
-        gl.addWidget(QLabel("打印模板:"),2,2); gl.addWidget(self.lbl_tmpl_name,2,3,1,3) # 跨列
+        gl.addWidget(QLabel("打印模板:"),2,2); gl.addWidget(self.lbl_tmpl_name,2,3,1,3)
 
         main_layout.addWidget(grp)
 
@@ -91,10 +89,8 @@ class PrintPage(QWidget):
         # 4. 扫描区
         h_work = QHBoxLayout()
         v_scan = QVBoxLayout()
-        
-        # 箱号显示：禁止换行，字体加大
         self.lbl_box_no = QLabel("--")
-        self.lbl_box_no.setWordWrap(False) # 禁止换行
+        self.lbl_box_no.setWordWrap(False)
         self.lbl_box_no.setStyleSheet("font-size: 22px; font-weight: bold; color: #c0392b; padding: 5px;")
         
         self.input_sn = QLineEdit(); self.input_sn.setPlaceholderText("扫描SN...")
@@ -136,15 +132,19 @@ class PrintPage(QWidget):
             if k in p['name'].lower() or k in p['code69'].lower():
                 r = self.table_product.rowCount(); self.table_product.insertRow(r)
                 it = QTableWidgetItem(p['name']); it.setData(Qt.UserRole, p)
-                self.table_product.setItem(r,0,it)
-                self.table_product.setItem(r,1,QTableWidgetItem(p['code69']))
-                self.table_product.setItem(r,2,QTableWidgetItem(p['sn4']))
-                # 获取箱规名称
+                
+                # 填充6列数据
+                self.table_product.setItem(r,0,it) # 名称
+                self.table_product.setItem(r,1,QTableWidgetItem(p.get('spec',''))) # 规格
+                self.table_product.setItem(r,2,QTableWidgetItem(p.get('color',''))) # 颜色
+                self.table_product.setItem(r,3,QTableWidgetItem(p['code69'])) # 69码
+                self.table_product.setItem(r,4,QTableWidgetItem(p['sn4'])) # SN4
+                
                 rn = "无"
                 if p.get('rule_id'):
                     c=self.db.conn.cursor(); c.execute("SELECT name FROM box_rules WHERE id=?",(p['rule_id'],))
                     res=c.fetchone(); rn=res[0] if res else "无"
-                self.table_product.setItem(r,3,QTableWidgetItem(rn))
+                self.table_product.setItem(r,5,QTableWidgetItem(rn)) # 箱规
 
     def on_product_select(self, item):
         p = self.table_product.item(item.row(),0).data(Qt.UserRole)
@@ -156,11 +156,9 @@ class PrintPage(QWidget):
         self.lbl_code69.setText(p.get('code69',''))
         self.lbl_qty.setText(str(p.get('qty','')))
         
-        # 显示模板名
         tmpl = p.get('template_path','')
         self.lbl_tmpl_name.setText(os.path.basename(tmpl) if tmpl else "未设置")
         
-        # 显示规则名
         rid = p.get('rule_id',0)
         rname = "无"
         if rid:
@@ -168,7 +166,6 @@ class PrintPage(QWidget):
              res=c.fetchone(); rname=res[0] if res else "无"
         self.lbl_rule_name.setText(rname)
         
-        # SN规则加载
         self.current_sn_rule = None
         if p.get('sn_rule_id'):
              c=self.db.conn.cursor(); c.execute("SELECT rule_string, length FROM sn_rules WHERE id=?",(p['sn_rule_id'],))
@@ -181,23 +178,20 @@ class PrintPage(QWidget):
     def update_box_preview(self):
         if not self.current_product: return
         try:
-            # 关键：传入产品ID，确保每个产品单独计数
             pid = self.current_product.get('id')
             rid = self.current_product.get('rule_id',0)
             rl = int(self.combo_repair.currentText())
             s, _ = self.rule_engine.generate_box_no(rid, self.current_product, rl)
             self.current_box_no = s
-            self.lbl_box_no.setText(s) # 单行显示
+            self.lbl_box_no.setText(s)
         except Exception as e:
             self.lbl_box_no.setText("规则生成错")
-            print(e)
 
     def update_daily(self):
         if not self.current_product: return
         d = datetime.datetime.now().strftime("%Y-%m-%d")+"%"
         try:
             c=self.db.conn.cursor()
-            # 按产品ID统计更准
             c.execute("SELECT COUNT(DISTINCT box_no) FROM records WHERE name=? AND print_date LIKE ?", (self.current_product['name'], d))
             self.lbl_daily.setText(f"今日: {c.fetchone()[0]}")
         except: pass
@@ -207,7 +201,6 @@ class PrintPage(QWidget):
         if self.current_sn_rule:
             fmt, mlen = self.current_sn_rule['fmt'], self.current_sn_rule['len']
             if mlen>0 and len(sn)!=mlen: return False, f"长度需{mlen}位"
-            # 正则校验
             pat = fmt.replace("{SN4}", self.current_product['sn4']).replace("{BATCH}", self.combo_repair.currentText())
             pat = re.sub(r"\{SEQ(\d+)\}", lambda m: f"\\d{{{m.group(1)}}}", pat)
             try:
@@ -262,7 +255,6 @@ class PrintPage(QWidget):
                 self.db.cursor.execute("INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date) VALUES (?,?,?,?,?,?,?,?,?)",
                                        (self.current_box_no, 0, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
             self.db.conn.commit()
-            # 提交序列号 (传入 Product ID)
             self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
             
             QMessageBox.information(self,"好","打印成功"); 
