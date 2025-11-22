@@ -192,10 +192,11 @@ class PrintPage(QWidget):
             self.lbl_daily.setText(f"今日: {c.fetchone()[0]}")
         except: pass
 
-    # --- 核心修复：稳健的正则生成逻辑 ---
+    # --- 核心修复：更健壮的正则生成逻辑 ---
     def validate_sn(self, sn):
         sn = sn.strip()
         prefix = str(self.current_product.get('sn4', '')).strip()
+        
         if not sn.startswith(prefix): 
             return False, f"前缀不符！\n要求以 {prefix} 开头\n实际: {sn}"
         
@@ -206,10 +207,9 @@ class PrintPage(QWidget):
             if mlen > 0 and len(sn) != mlen: 
                 return False, f"长度错误！\n要求: {mlen}位\n实际: {len(sn)}位"
             
-            # 1. 找出所有变量标签 ({...})
-            # 2. 分割字符串为: [普通文本, 变量, 普通文本, 变量...]
-            # 3. 对普通文本进行 re.escape，对变量进行转换
-            
+            # 使用正则分割字符串为: [普通文本, 变量, 普通文本, 变量...]
+            # (\{\w+\}) 匹配 {SN4} {BATCH}
+            # (\{SEQ\d+\}) 匹配 {SEQ7}
             parts = re.split(r'(\{SN4\}|\{BATCH\}|\{SEQ\d+\})', fmt)
             regex_parts = []
             
@@ -220,10 +220,18 @@ class PrintPage(QWidget):
                     regex_parts.append(re.escape(prefix))
                 elif part == "{BATCH}":
                     regex_parts.append(re.escape(current_batch))
-                elif part.startswith("{SEQ"):
-                    # 提取 {SEQn} 中的 n
-                    width = int(part[4:-1])
-                    regex_parts.append(f"\\d{{{width}}}")
+                elif part.startswith("{SEQ") and part.endswith("}"):
+                    # 使用 re.search 安全地提取数字部分，避免硬编码切片错误
+                    match = re.search(r'\{SEQ(\d+)\}', part)
+                    if match:
+                        try:
+                            width = int(match.group(1))
+                            regex_parts.append(f"\\d{{{width}}}")
+                        except ValueError:
+                            return False, f"规则解析错误：序列号长度({match.group(1)})不是有效数字"
+                    else:
+                        # 理论上不会执行到此，但作为安全冗余
+                        return False, f"规则解析错误：无效的序列标签格式 ({part})"
                 else:
                     # 普通文本 (包括 /, -, + 等)，必须转义
                     if part:
@@ -233,7 +241,7 @@ class PrintPage(QWidget):
             
             try:
                 if not re.match(full_regex, sn): 
-                    return False, f"格式不符！\n规则格式: {fmt}\n当前批次: {current_batch}\nSN: {sn}"
+                    return False, f"格式不符！\nSN规则: {fmt}\nSN: {sn}"
             except Exception as e: 
                 return False, f"规则解析错误: {e}"
                 
