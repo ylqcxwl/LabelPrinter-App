@@ -1,161 +1,126 @@
 import sqlite3
 import json
-import os
 import shutil
-from datetime import datetime
-from functools import lru_cache
-
-DB_FILE = "app_data.db"
-BACKUP_DIR = "backup"  # 新增备份目录常量
-
-DEFAULT_SETTINGS = {
-    "field_mapping": {
-        "name": "ProductName", "spec": "Spec", "model": "Model", 
-        "color": "Color", "sn4": "SN4", "sku": "SKU", 
-        "code69": "Code69", "qty": "Qty", "weight": "Weight",
-        "box_no": "BoxNo", "prod_date": "ProdDate"
-    },
-    "template_root": "",
-    "default_printer": ""
-}
+import os
+import datetime
+from src.config import DEFAULT_MAPPING
 
 class Database:
-    def __init__(self):
-        self.conn = None
-        self.cursor = None
-        self.connect()
+    def __init__(self, db_name='label_printer.db'):
+        self.db_name = os.path.abspath(db_name)
+        self.conn = sqlite3.connect(self.db_name)
+        self.cursor = self.conn.cursor()
         self.setup_db()
 
-    def connect(self):
-        self.conn = sqlite3.connect(DB_FILE)
-        self.cursor = self.conn.cursor()
-
     def setup_db(self):
-        self.cursor.execute("""
+        # 表结构定义 (保持现有结构，只做检查)
+        self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY, name TEXT UNIQUE, spec TEXT, model TEXT, color TEXT, 
-                sn4 TEXT, sku TEXT, code69 TEXT, qty INTEGER, weight REAL, 
-                rule_id INTEGER, sn_rule_id INTEGER, template_path TEXT
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL, spec TEXT, model TEXT, color TEXT,
+                sn4 TEXT NOT NULL UNIQUE, sku TEXT, code69 TEXT,
+                qty INTEGER, weight TEXT, template_path TEXT,
+                rule_id INTEGER DEFAULT 0, sn_rule_id INTEGER DEFAULT 0
             )
-        """)
-        self.cursor.execute("""
+        ''')
+        self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS box_rules (
-                id INTEGER PRIMARY KEY, name TEXT, rule_string TEXT, 
-                current_seq INTEGER DEFAULT 0, daily_reset_date TEXT
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE, rule_string TEXT NOT NULL, current_seq INTEGER DEFAULT 0
             )
-        """)
-        self.cursor.execute("""
+        ''')
+        self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS sn_rules (
-                id INTEGER PRIMARY KEY, name TEXT, rule_string TEXT, length INTEGER
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE, rule_string TEXT NOT NULL, length INTEGER DEFAULT 0
             )
-        """)
-        self.cursor.execute("""
+        ''')
+        self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS records (
-                id INTEGER PRIMARY KEY, box_no TEXT, box_sn_seq INTEGER, 
-                name TEXT, spec TEXT, model TEXT, color TEXT, code69 TEXT, 
-                sn TEXT UNIQUE, print_date TEXT
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                box_sn_seq INTEGER, name TEXT, spec TEXT, model TEXT, color TEXT,
+                code69 TEXT, sn TEXT, box_no TEXT, prod_date TEXT, print_date TEXT
             )
-        """)
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY, value TEXT
-            )
-        """)
+        ''')
+        self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+        self.cursor.execute('CREATE TABLE IF NOT EXISTS box_counters (key TEXT PRIMARY KEY, current_val INTEGER)')
+        
+        # 字段检查补全
+        self._check_and_add_column('products', 'rule_id', 'INTEGER DEFAULT 0')
+        self._check_and_add_column('products', 'sn_rule_id', 'INTEGER DEFAULT 0')
+        self._check_and_add_column('box_rules', 'rule_string', 'TEXT')
+        
+        # 初始化默认设置
+        default_mapping_json = json.dumps(DEFAULT_MAPPING)
+        self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('field_mapping', ?)", (default_mapping_json,))
+        self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('backup_path', ?)", (os.path.abspath("./backups"),))
+        
+        default_tmpl_root = os.path.abspath("./templates")
+        if not os.path.exists(default_tmpl_root): os.makedirs(default_tmpl_root, exist_ok=True)
+        self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('template_root', ?)", (default_tmpl_root,))
+        
         self.conn.commit()
-        self._ensure_default_settings()
 
-    def _ensure_default_settings(self):
-        for key, default_value in DEFAULT_SETTINGS.items():
-            self.cursor.execute("SELECT value FROM settings WHERE key=?", (key,))
-            if self.cursor.fetchone() is None:
-                value_str = json.dumps(default_value)
-                self.cursor.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, value_str))
-        self.conn.commit()
+    def _check_and_add_column(self, table_name, column_name, column_type):
+        try:
+            self.cursor.execute(f"PRAGMA table_info({table_name})")
+            if column_name not in [i[1] for i in self.cursor.fetchall()]:
+                self.cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+        except: pass
 
-    @lru_cache(maxsize=1)
     def get_setting(self, key):
         self.cursor.execute("SELECT value FROM settings WHERE key=?", (key,))
-        result = self.cursor.fetchone()
-        if result:
-            try:
-                return json.loads(result[0])
-            except (json.JSONDecodeError, TypeError):
-                return result[0]
-        return DEFAULT_SETTINGS.get(key)
+        r = self.cursor.fetchone()
+        if r and key == 'field_mapping':
+            try: return json.loads(r[0])
+            except: return DEFAULT_MAPPING
+        return r[0] if r else None
 
     def set_setting(self, key, value):
-        value_str = json.dumps(value)
-        self.cursor.execute("REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value_str))
+        self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         self.conn.commit()
-        self.get_setting.cache_clear() # 清除缓存
+
+    def backup_db(self, custom_path=None):
+        try:
+            td = custom_path if custom_path else self.get_setting('backup_path')
+            if not os.path.exists(td): os.makedirs(td)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            f = os.path.join(td, f"backup_{ts}.db")
+            self.conn.commit(); shutil.copy2(self.db_name, f)
+            return True, f"备份成功: {f}"
+        except Exception as e: return False, str(e)
+
+    def restore_db(self, path):
+        try:
+            if not os.path.exists(path): return False, "文件不存在"
+            self.conn.close()
+            try: shutil.move(self.db_name, self.db_name+".old")
+            except: pass
+            shutil.copy2(path, self.db_name)
+            self.conn = sqlite3.connect(self.db_name); self.cursor = self.conn.cursor()
+            return True, "恢复成功，请重启"
+        except Exception as e: return False, str(e)
 
     def check_sn_exists(self, sn):
-        self.cursor.execute("SELECT 1 FROM records WHERE sn=?", (sn,))
+        self.cursor.execute("SELECT id FROM records WHERE sn=?", (sn,))
         return self.cursor.fetchone() is not None
 
-    # --- 新增备份和清理功能 ---
+    # --- 核心修改：计数器增加 product_id 参数 ---
+    def get_box_counter(self, product_id, rule_id, year, month, repair_level=0):
+        # Key格式: P{prod_id}_R{rule_id}_{YYYY}_{MM}_{Repair}
+        # 确保每个产品单独计数
+        key = f"P{product_id}_R{rule_id}_{year}_{month}_{repair_level}"
+        self.cursor.execute("SELECT current_val FROM box_counters WHERE key=?", (key,))
+        res = self.cursor.fetchone()
+        return res[0] if res else repair_level * 10000 # 初始值
 
-    def backup_db(self, manual=False):
-        """
-        将主数据库文件复制到备份文件夹，并触发清理。
-        manual=True 表示手动备份，用于文件名区分。
-        """
-        try:
-            if not os.path.exists(BACKUP_DIR):
-                os.makedirs(BACKUP_DIR)
+    def increment_box_counter(self, product_id, rule_id, year, month, repair_level=0):
+        key = f"P{product_id}_R{rule_id}_{year}_{month}_{repair_level}"
+        current = self.get_box_counter(product_id, rule_id, year, month, repair_level)
+        new_val = current + 1
+        self.cursor.execute("INSERT OR REPLACE INTO box_counters (key, current_val) VALUES (?, ?)", (key, new_val))
+        self.conn.commit()
+        return new_val
 
-            # 创建带时间戳和标识的文件名
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            suffix = "_MANUAL" if manual else "_AUTO"
-            backup_filename = f"{timestamp}{suffix}_{DB_FILE}"
-            backup_path = os.path.join(BACKUP_DIR, backup_filename)
-
-            # 暂时关闭连接，复制文件
-            self.conn.close()
-            shutil.copy2(DB_FILE, backup_path)
-            
-            # 重新建立连接
-            self.connect()
-            
-            self.cleanup_backups() # 备份后立即执行清理
-            
-            return True, f"备份成功：{backup_filename}，旧文件已清理。"
-        
-        except Exception as e:
-            # 尝试重新连接以确保应用能继续运行
-            try:
-                self.connect()
-            except:
-                pass 
-            return False, f"备份失败：{e}"
-
-    def cleanup_backups(self, retain_count=2):
-        """删除备份目录中除最新的两个文件外的所有旧文件。"""
-        try:
-            if not os.path.exists(BACKUP_DIR):
-                return
-            
-            # 筛选所有数据库备份文件
-            backup_files = [f for f in os.listdir(BACKUP_DIR) 
-                            if f.endswith(DB_FILE) and os.path.isfile(os.path.join(BACKUP_DIR, f))]
-            
-            # 获取文件修改时间 (mtime) 和路径
-            file_details = []
-            for filename in backup_files:
-                file_path = os.path.join(BACKUP_DIR, filename)
-                mtime = os.path.getmtime(file_path)
-                file_details.append((mtime, file_path))
-                
-            # 按修改时间降序排序 (最新的在前)
-            file_details.sort(key=lambda x: x[0], reverse=True)
-            
-            # 确定要删除的文件 (除了前 retain_count 个)
-            files_to_delete = file_details[retain_count:]
-            
-            for mtime, file_path in files_to_delete:
-                os.remove(file_path)
-                
-        except Exception as e:
-            # 清理是非关键功能，仅打印错误
-            print(f"备份文件清理错误: {e}")
-            pass
+    def close(self):
+        self.conn.close()
