@@ -28,7 +28,7 @@ class PrintPage(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(5,5,5,5)
 
-        # 1. 搜索栏与列表
+        # 1. 搜索与列表
         h_search = QHBoxLayout()
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 搜索产品...")
@@ -48,7 +48,7 @@ class PrintPage(QWidget):
         main_layout.addWidget(self.input_search)
         main_layout.addWidget(self.table_product)
 
-        # 2. 详细信息
+        # 2. 详情
         grp = QGroupBox("产品详情")
         gl = QGridLayout(grp)
         gl.setContentsMargins(5,5,5,5)
@@ -192,46 +192,48 @@ class PrintPage(QWidget):
             self.lbl_daily.setText(f"今日: {c.fetchone()[0]}")
         except: pass
 
+    # --- 核心修复：稳健的正则生成逻辑 ---
     def validate_sn(self, sn):
-        # 1. 基础前缀校验 (去除空白)
         sn = sn.strip()
         prefix = str(self.current_product.get('sn4', '')).strip()
-        
         if not sn.startswith(prefix): 
             return False, f"前缀不符！\n要求以 {prefix} 开头\n实际: {sn}"
         
-        # 2. 规则校验
         if self.current_sn_rule:
             fmt = self.current_sn_rule['fmt']
             mlen = self.current_sn_rule['len']
             
-            # 长度校验
             if mlen > 0 and len(sn) != mlen: 
                 return False, f"长度错误！\n要求: {mlen}位\n实际: {len(sn)}位"
             
-            # --- 增强的正则生成逻辑 (安全模式) ---
-            # 1. 先用唯一占位符替换变量
-            temp_pat = fmt.replace("{SN4}", "___SN4___") \
-                          .replace("{BATCH}", "___BATCH___")
+            # 1. 找出所有变量标签 ({...})
+            # 2. 分割字符串为: [普通文本, 变量, 普通文本, 变量...]
+            # 3. 对普通文本进行 re.escape，对变量进行转换
             
-            # 2. 保护 {SEQn} 结构 (将其转换为占位符)
-            temp_pat = re.sub(r"\{SEQ(\d+)\}", r"___SEQ\1___", temp_pat)
+            parts = re.split(r'(\{SN4\}|\{BATCH\}|\{SEQ\d+\})', fmt)
+            regex_parts = []
             
-            # 3. 转义所有剩余字符 (这样 / + - 等符号就安全了)
-            safe_pat = re.escape(temp_pat)
+            current_batch = self.combo_repair.currentText()
             
-            # 4. 还原变量为正则代码
-            # 还原 SN4 (也进行转义，防止SN本身包含特殊字符)
-            safe_pat = safe_pat.replace("___SN4___", re.escape(prefix))
-            # 还原 Batch
-            safe_pat = safe_pat.replace("___BATCH___", re.escape(self.combo_repair.currentText()))
-            # 还原 SEQn (\d{n})
-            safe_pat = re.sub(r"___SEQ(\d+)___", lambda m: f"\\d{{{m.group(1)}}}", safe_pat)
+            for part in parts:
+                if part == "{SN4}":
+                    regex_parts.append(re.escape(prefix))
+                elif part == "{BATCH}":
+                    regex_parts.append(re.escape(current_batch))
+                elif part.startswith("{SEQ"):
+                    # 提取 {SEQn} 中的 n
+                    width = int(part[4:-1])
+                    regex_parts.append(f"\\d{{{width}}}")
+                else:
+                    # 普通文本 (包括 /, -, + 等)，必须转义
+                    if part:
+                        regex_parts.append(re.escape(part))
+            
+            full_regex = "^" + "".join(regex_parts) + "$"
             
             try:
-                if not re.match(f"^{safe_pat}$", sn): 
-                    # 构造详细报错信息
-                    return False, f"格式不符！\n规则格式: {fmt}\n当前批次: {self.combo_repair.currentText()}\nSN: {sn}"
+                if not re.match(full_regex, sn): 
+                    return False, f"格式不符！\n规则格式: {fmt}\n当前批次: {current_batch}\nSN: {sn}"
             except Exception as e: 
                 return False, f"规则解析错误: {e}"
                 
@@ -239,7 +241,7 @@ class PrintPage(QWidget):
 
     def on_sn_scan(self):
         if not self.current_product: return
-        sn = self.input_sn.text().strip(); self.input_sn.clear() # 移除 upper() 保持原样，或根据需求保留
+        sn = self.input_sn.text().strip(); self.input_sn.clear() 
         if not sn: return
         
         if sn in [x[0] for x in self.current_sn_list]: return QMessageBox.warning(self,"错","重复扫描")
