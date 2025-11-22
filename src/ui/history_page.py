@@ -6,58 +6,94 @@ import traceback
 class HistoryPage(QWidget):
     def __init__(self):
         super().__init__()
-        self.db = Database()
+        # 使用 try-catch 保护初始化，防止DB连接失败导致闪退
+        try:
+            self.db = Database()
+            self.init_ui()
+            self.load()
+        except Exception as e:
+            print(f"History Init Error: {e}")
+
+    def init_ui(self):
         layout = QVBoxLayout(self)
         
-        h = QHBoxLayout()
-        self.search = QLineEdit(); self.search.setPlaceholderText("搜SN/箱号...")
-        self.search.returnPressed.connect(self.load)
-        b1 = QPushButton("查"); b1.clicked.connect(self.load)
-        b2 = QPushButton("删"); b2.clicked.connect(self.delete)
-        h.addWidget(self.search); h.addWidget(b1); h.addWidget(b2)
-        layout.addLayout(h)
+        # 搜索栏
+        h_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("搜SN / 箱号...")
+        self.search_input.returnPressed.connect(self.load)
         
+        btn_search = QPushButton("查询")
+        btn_search.clicked.connect(self.load)
+        
+        btn_del = QPushButton("删除选中")
+        btn_del.setStyleSheet("color: red;")
+        btn_del.clicked.connect(self.delete_records)
+        
+        h_layout.addWidget(self.search_input)
+        h_layout.addWidget(btn_search)
+        h_layout.addWidget(btn_del)
+        layout.addLayout(h_layout)
+        
+        # 表格
         self.table = QTableWidget()
-        # 必须确保列数和查询字段数一致
         cols = ["ID", "箱号", "名称", "规格", "型号", "颜色", "SN", "69码", "时间"]
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.table.hideColumn(0)
+        self.table.hideColumn(0) # 隐藏ID
         layout.addWidget(self.table)
-        
-        # 延时加载防止初始化未完成时崩溃
+
+    def refresh_data(self):
+        # 主界面调用此方法
         self.load()
 
     def load(self):
         try:
-            k = f"%{self.search.text()}%"
+            keyword = f"%{self.search_input.text().strip()}%"
             self.table.setRowCount(0)
-            c = self.db.conn.cursor()
-            # 增加 try-except 保护查询
-            sql = "SELECT id, box_no, name, spec, model, color, sn, code69, print_date FROM records WHERE sn LIKE ? OR box_no LIKE ? ORDER BY id DESC LIMIT 100"
-            c.execute(sql, (k, k))
-            for r_idx, row in enumerate(c.fetchall()):
+            
+            cursor = self.db.conn.cursor()
+            # 确保SQL列数与表格列数一致
+            sql = """
+                SELECT id, box_no, name, spec, model, color, sn, code69, print_date 
+                FROM records 
+                WHERE sn LIKE ? OR box_no LIKE ? 
+                ORDER BY id DESC LIMIT 100
+            """
+            cursor.execute(sql, (keyword, keyword))
+            
+            rows = cursor.fetchall()
+            for r_idx, row in enumerate(rows):
                 self.table.insertRow(r_idx)
                 for c_idx, val in enumerate(row):
-                    val_str = str(val) if val is not None else ""
-                    self.table.setItem(r_idx, c_idx, QTableWidgetItem(val_str))
+                    # 安全转换，防止 None 报错
+                    text = str(val) if val is not None else ""
+                    self.table.setItem(r_idx, c_idx, QTableWidgetItem(text))
+                    
         except Exception as e:
-            print(f"History Load Error: {e}")
-            # 不弹窗打扰用户，只在控制台输出
+            print(f"Load History Error: {e}")
+            # 不弹窗，避免循环闪退
 
-    def delete(self):
+    def delete_records(self):
         try:
-            rows = sorted(set(i.row() for i in self.table.selectedIndexes()), reverse=True)
-            if not rows: return QMessageBox.warning(self,"提示","未选中")
+            selected_rows = self.table.selectedIndexes()
+            if not selected_rows:
+                return QMessageBox.warning(self, "提示", "未选中任何记录")
             
+            # 获取选中的ID (第0列)
+            # 使用 set 去重行号
+            rows = set(index.row() for index in selected_rows)
             ids = [self.table.item(r, 0).text() for r in rows]
-            if QMessageBox.question(self,"确认",f"删 {len(ids)} 条?",QMessageBox.Yes)==QMessageBox.Yes:
+            
+            if QMessageBox.question(self, "确认", f"确定删除 {len(ids)} 条记录?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
                 placeholders = ",".join("?" * len(ids))
-                self.db.cursor.execute(f"DELETE FROM records WHERE id IN ({placeholders})", ids)
+                sql = f"DELETE FROM records WHERE id IN ({placeholders})"
+                self.db.cursor.execute(sql, ids)
                 self.db.conn.commit()
                 self.load()
+                
         except Exception as e:
             QMessageBox.critical(self, "错误", str(e))
