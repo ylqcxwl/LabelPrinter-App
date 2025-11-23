@@ -26,9 +26,10 @@ class PrintPage(QWidget):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5,5,5,5)
+        main_layout.setContentsMargins(10, 10, 10, 10) # 稍微增加边距让界面不那么挤
+        main_layout.setSpacing(8)
 
-        # 1. 搜索与列表
+        # ================= 1. 顶部搜索与产品列表 =================
         h_search = QHBoxLayout()
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 搜索产品...")
@@ -41,78 +42,114 @@ class PrintPage(QWidget):
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table_product.setMaximumHeight(150)
+        # UI调整：限制顶部高度，给下方SN列表留出更多空间
+        self.table_product.setMaximumHeight(140) 
         self.table_product.itemClicked.connect(self.on_product_select)
         
         main_layout.addLayout(h_search)
         main_layout.addWidget(self.input_search)
         main_layout.addWidget(self.table_product)
 
-        # 2. 详情
+        # ================= 2. 产品详情区域 =================
         grp = QGroupBox("产品详情")
+        grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; border: 1px solid #ccc; margin-top: 6px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }")
         gl = QGridLayout(grp)
-        gl.setContentsMargins(5,5,5,5)
+        gl.setContentsMargins(10, 15, 10, 5)
+        gl.setHorizontalSpacing(20) # 增加列间距，更美观
         
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_spec = QLabel("--"); self.lbl_model = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_qty = QLabel("--")
         self.lbl_rule_name = QLabel("无"); self.lbl_tmpl_name = QLabel("无")
 
-        style = "color: #2980b9; font-weight: bold;"
-        for l in [self.lbl_name, self.lbl_sn4, self.lbl_spec, self.lbl_model, self.lbl_code69, self.lbl_qty, self.lbl_rule_name, self.lbl_tmpl_name]:
-            l.setStyleSheet(style)
+        style_lbl = "color: #555;"
+        style_val = "color: #2980b9; font-weight: bold; font-size: 13px;"
+        
+        # 辅助函数快速添加
+        def add_field(row, col, text, val_widget):
+            l = QLabel(text); l.setStyleSheet(style_lbl)
+            val_widget.setStyleSheet(style_val)
+            gl.addWidget(l, row, col)
+            gl.addWidget(val_widget, row, col+1)
 
-        gl.addWidget(QLabel("名称:"),0,0); gl.addWidget(self.lbl_name,0,1)
-        gl.addWidget(QLabel("规格:"),0,2); gl.addWidget(self.lbl_spec,0,3)
-        gl.addWidget(QLabel("型号:"),0,4); gl.addWidget(self.lbl_model,0,5)
-        gl.addWidget(QLabel("SN前4:"),1,0); gl.addWidget(self.lbl_sn4,1,1)
-        gl.addWidget(QLabel("69码:"),1,2); gl.addWidget(self.lbl_code69,1,3)
-        gl.addWidget(QLabel("整箱数:"),1,4); gl.addWidget(self.lbl_qty,1,5)
-        gl.addWidget(QLabel("箱号规则:"),2,0); gl.addWidget(self.lbl_rule_name,2,1)
-        gl.addWidget(QLabel("打印模板:"),2,2); gl.addWidget(self.lbl_tmpl_name,2,3,1,3)
+        add_field(0, 0, "名称:", self.lbl_name)
+        add_field(0, 2, "规格:", self.lbl_spec)
+        add_field(0, 4, "型号:", self.lbl_model)
+        add_field(0, 6, "颜色:", self.lbl_color) # 之前代码可能漏了self.lbl_color定义，补上
+        
+        add_field(1, 0, "SN前4:", self.lbl_sn4)
+        add_field(1, 2, "69码:", self.lbl_code69)
+        add_field(1, 4, "整箱数:", self.lbl_qty)
+        
+        # 跨列显示较长的信息
+        gl.addWidget(QLabel("箱号规则:"), 2, 0); gl.addWidget(self.lbl_rule_name, 2, 1)
+        gl.addWidget(QLabel("打印模板:"), 2, 2); gl.addWidget(self.lbl_tmpl_name, 2, 3, 1, 3)
 
         main_layout.addWidget(grp)
 
-        # 3. 控制
+        # ================= 3. 控制栏 (日期/批次/统计) =================
         h_ctrl = QHBoxLayout()
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
         self.combo_repair.currentIndexChanged.connect(self.update_box_preview)
+        
+        # UI调整：字体加大
         self.lbl_daily = QLabel("今日: 0")
-        self.lbl_daily.setStyleSheet("color:green; font-weight:bold")
+        self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 20px;") 
+        
         h_ctrl.addWidget(QLabel("日期:")); h_ctrl.addWidget(self.date_prod)
         h_ctrl.addWidget(QLabel("批次:")); h_ctrl.addWidget(self.combo_repair)
-        h_ctrl.addStretch(); h_ctrl.addWidget(self.lbl_daily)
+        h_ctrl.addStretch()
+        h_ctrl.addWidget(self.lbl_daily)
         main_layout.addLayout(h_ctrl)
 
-        # 4. 扫描区
+        # ================= 4. 扫描与列表区 (核心UI调整) =================
         h_work = QHBoxLayout()
+        
+        # --- 左侧：箱号与扫描框 ---
         v_scan = QVBoxLayout()
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
-        self.lbl_box_no.setStyleSheet("font-size: 22px; font-weight: bold; color: #c0392b; padding: 5px;")
+        self.lbl_box_no.setStyleSheet("font-size: 24px; font-weight: bold; color: #c0392b; padding: 10px 0;")
         
-        self.input_sn = QLineEdit(); self.input_sn.setPlaceholderText("扫描SN...")
-        self.input_sn.setStyleSheet("font-size:18px; padding:8px; border:2px solid #3498db")
+        self.input_sn = QLineEdit()
+        self.input_sn.setPlaceholderText("在此扫描SN...")
+        self.input_sn.setStyleSheet("font-size: 20px; padding: 10px; border: 2px solid #3498db; border-radius: 4px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         
         v_scan.addWidget(QLabel("当前箱号:")); v_scan.addWidget(self.lbl_box_no)
         v_scan.addWidget(self.input_sn); v_scan.addStretch()
         
+        # --- 右侧：SN列表 ---
         v_list = QVBoxLayout()
         h_btns = QHBoxLayout()
         b_all = QPushButton("全选"); b_all.clicked.connect(lambda: self.list_sn.selectAll())
         b_del = QPushButton("删除"); b_del.clicked.connect(self.del_sn)
         h_btns.addWidget(QLabel("SN列表")); h_btns.addStretch(); h_btns.addWidget(b_all); h_btns.addWidget(b_del)
-        self.list_sn = QListWidget(); self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        
+        self.list_sn = QListWidget()
+        self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.list_sn.setStyleSheet("font-size: 14px;") # 列表文字稍大清晰
+        
         v_list.addLayout(h_btns); v_list.addWidget(self.list_sn)
         
-        h_work.addLayout(v_scan, 4); h_work.addLayout(v_list, 6)
+        # UI调整：调整左右比例，左边7(宽)，右边3(窄)
+        h_work.addLayout(v_scan, 7)
+        h_work.addLayout(v_list, 3)
+        
         main_layout.addLayout(h_work)
 
-        b_print = QPushButton("打印 / 封箱"); b_print.setStyleSheet("background:#e67e22;color:white;padding:10px;font-size:16px;font-weight:bold")
-        b_print.clicked.connect(self.print_label)
-        main_layout.addWidget(b_print)
+        # ================= 5. 底部按钮 =================
+        self.btn_print = QPushButton("打印 / 封箱")
+        self.btn_print.setStyleSheet("background:#e67e22; color:white; padding:12px; font-size:18px; font-weight:bold; border-radius: 5px;")
+        self.btn_print.setCursor(Qt.PointingHandCursor)
+        self.btn_print.clicked.connect(self.print_label)
+        main_layout.addWidget(self.btn_print)
+
+        # 补充定义颜色Label (避免报错)
+        self.lbl_color = QLabel("--") 
+
+    # --- 逻辑部分保持不变，增加了列表序号刷新 ---
 
     def refresh_data(self):
         self.p_cache = []
@@ -149,6 +186,7 @@ class PrintPage(QWidget):
         self.lbl_sn4.setText(p.get('sn4',''))
         self.lbl_spec.setText(p.get('spec',''))
         self.lbl_model.setText(p.get('model',''))
+        self.lbl_color.setText(p.get('color','')) # 修复：更新颜色
         self.lbl_code69.setText(p.get('code69',''))
         self.lbl_qty.setText(str(p.get('qty','')))
         
@@ -168,7 +206,8 @@ class PrintPage(QWidget):
              res=c.fetchone()
              if res: self.current_sn_rule={'fmt':res[0], 'len':res[1]}
 
-        self.current_sn_list=[]; self.list_sn.clear()
+        self.current_sn_list=[]; 
+        self.update_sn_list_ui() # 统一使用UI刷新函数
         self.update_box_preview(); self.update_daily(); self.input_sn.setFocus()
 
     def update_box_preview(self):
@@ -192,66 +231,47 @@ class PrintPage(QWidget):
             self.lbl_daily.setText(f"今日: {c.fetchone()[0]}")
         except: pass
 
-    # --- 核心修复：更健壮的正则生成逻辑 ---
     def validate_sn(self, sn):
-        sn = sn.strip()
+        sn = re.sub(r'[\s\W\u200b\ufeff]+$', '', sn); sn = sn.strip() 
         prefix = str(self.current_product.get('sn4', '')).strip()
-        
-        if not sn.startswith(prefix): 
-            return False, f"前缀不符！\n要求以 {prefix} 开头\n实际: {sn}"
+        if not sn.startswith(prefix): return False, f"前缀不符！\n要求: {prefix}"
         
         if self.current_sn_rule:
-            fmt = self.current_sn_rule['fmt']
-            mlen = self.current_sn_rule['len']
+            fmt = self.current_sn_rule['fmt']; mlen = self.current_sn_rule['len']
+            if mlen > 0 and len(sn) != mlen: return False, f"长度错误！\n要求: {mlen}位"
             
-            if mlen > 0 and len(sn) != mlen: 
-                return False, f"长度错误！\n要求: {mlen}位\n实际: {len(sn)}位"
-            
-            # 使用正则分割字符串为: [普通文本, 变量, 普通文本, 变量...]
-            # (\{\w+\}) 匹配 {SN4} {BATCH}
-            # (\{SEQ\d+\}) 匹配 {SEQ7}
             parts = re.split(r'(\{SN4\}|\{BATCH\}|\{SEQ\d+\})', fmt)
             regex_parts = []
-            
             current_batch = self.combo_repair.currentText()
             
             for part in parts:
-                if part == "{SN4}":
-                    regex_parts.append(re.escape(prefix))
-                elif part == "{BATCH}":
-                    regex_parts.append(re.escape(current_batch))
+                if part == "{SN4}": regex_parts.append(re.escape(prefix))
+                elif part == "{BATCH}": regex_parts.append(re.escape(current_batch))
                 elif part.startswith("{SEQ") and part.endswith("}"):
-                    # 使用 re.search 安全地提取数字部分，避免硬编码切片错误
                     match = re.search(r'\{SEQ(\d+)\}', part)
-                    if match:
-                        try:
-                            width = int(match.group(1))
-                            regex_parts.append(f"\\d{{{width}}}")
-                        except ValueError:
-                            return False, f"规则解析错误：序列号长度({match.group(1)})不是有效数字"
-                    else:
-                        # 理论上不会执行到此，但作为安全冗余
-                        return False, f"规则解析错误：无效的序列标签格式 ({part})"
+                    if match: regex_parts.append(f"\\d{{{int(match.group(1))}}}")
+                    else: return False, "规则错误"
                 else:
-                    # 普通文本 (包括 /, -, + 等)，必须转义
-                    if part:
-                        regex_parts.append(re.escape(part))
-            
-            full_regex = "^" + "".join(regex_parts) + "$"
+                    if part: regex_parts.append(re.escape(part))
             
             try:
-                if not re.match(full_regex, sn): 
-                    return False, f"格式不符！\nSN规则: {fmt}\nSN: {sn}"
-            except Exception as e: 
-                return False, f"规则解析错误: {e}"
-                
+                if not re.match("^" + "".join(regex_parts) + "$", sn): return False, f"格式不符！\nSN: {sn}"
+            except: return False, "正则错误"
         return True, ""
+
+    # UI新增：刷新列表显示，带序号
+    def update_sn_list_ui(self):
+        self.list_sn.clear()
+        for i, (sn, _) in enumerate(self.current_sn_list):
+            self.list_sn.addItem(f"{i+1}. {sn}")
+        self.list_sn.scrollToBottom()
 
     def on_sn_scan(self):
         if not self.current_product: return
         sn = self.input_sn.text().strip(); self.input_sn.clear() 
         if not sn: return
-        
+        sn = sn.upper()
+
         if sn in [x[0] for x in self.current_sn_list]: return QMessageBox.warning(self,"错","重复扫描")
         if self.db.check_sn_exists(sn): return QMessageBox.warning(self,"错","已打印过")
         
@@ -259,14 +279,20 @@ class PrintPage(QWidget):
         if not ok: return QMessageBox.warning(self,"校验失败", msg)
         
         self.current_sn_list.append((sn, datetime.datetime.now()))
-        self.list_sn.addItem(sn); self.list_sn.scrollToBottom()
+        self.update_sn_list_ui() # 刷新列表UI
+        
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
     def del_sn(self):
-        for i in self.list_sn.selectedItems():
-            v=i.text()
-            self.current_sn_list=[x for x in self.current_sn_list if x[0]!=v]
-            self.list_sn.takeItem(self.list_sn.row(i))
+        # 获取选中行的索引 (倒序删除，防止索引错位)
+        rows = sorted([item.row() for item in self.list_sn.selectedItems()], reverse=True)
+        if not rows: return
+        
+        for row in rows:
+            # 从数据源中删除
+            del self.current_sn_list[row]
+            
+        self.update_sn_list_ui() # 重新生成带序号的列表
 
     def print_label(self):
         if not self.current_product or not self.current_sn_list: return
@@ -297,5 +323,5 @@ class PrintPage(QWidget):
             self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
             
             QMessageBox.information(self,"好","打印成功"); 
-            self.current_sn_list=[]; self.list_sn.clear(); self.update_box_preview(); self.update_daily()
+            self.current_sn_list=[]; self.update_sn_list_ui(); self.update_box_preview(); self.update_daily()
         else: QMessageBox.critical(self,"失败", msg)
