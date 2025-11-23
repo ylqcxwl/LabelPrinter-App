@@ -26,7 +26,7 @@ class PrintPage(QWidget):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10) # 稍微增加边距让界面不那么挤
+        main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(8)
 
         # ================= 1. 顶部搜索与产品列表 =================
@@ -42,7 +42,6 @@ class PrintPage(QWidget):
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        # UI调整：限制顶部高度，给下方SN列表留出更多空间
         self.table_product.setMaximumHeight(140) 
         self.table_product.itemClicked.connect(self.on_product_select)
         
@@ -55,17 +54,18 @@ class PrintPage(QWidget):
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; border: 1px solid #ccc; margin-top: 6px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }")
         gl = QGridLayout(grp)
         gl.setContentsMargins(10, 15, 10, 5)
-        gl.setHorizontalSpacing(20) # 增加列间距，更美观
+        gl.setHorizontalSpacing(20)
         
+        # --- 修复点：在此处统一初始化所有Label，包括 lbl_color ---
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_spec = QLabel("--"); self.lbl_model = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_qty = QLabel("--")
         self.lbl_rule_name = QLabel("无"); self.lbl_tmpl_name = QLabel("无")
+        self.lbl_color = QLabel("--") # 补上颜色的定义
 
         style_lbl = "color: #555;"
         style_val = "color: #2980b9; font-weight: bold; font-size: 13px;"
         
-        # 辅助函数快速添加
         def add_field(row, col, text, val_widget):
             l = QLabel(text); l.setStyleSheet(style_lbl)
             val_widget.setStyleSheet(style_val)
@@ -75,25 +75,23 @@ class PrintPage(QWidget):
         add_field(0, 0, "名称:", self.lbl_name)
         add_field(0, 2, "规格:", self.lbl_spec)
         add_field(0, 4, "型号:", self.lbl_model)
-        add_field(0, 6, "颜色:", self.lbl_color) # 之前代码可能漏了self.lbl_color定义，补上
+        add_field(0, 6, "颜色:", self.lbl_color) # 现在这里不会报错了
         
         add_field(1, 0, "SN前4:", self.lbl_sn4)
         add_field(1, 2, "69码:", self.lbl_code69)
         add_field(1, 4, "整箱数:", self.lbl_qty)
         
-        # 跨列显示较长的信息
         gl.addWidget(QLabel("箱号规则:"), 2, 0); gl.addWidget(self.lbl_rule_name, 2, 1)
         gl.addWidget(QLabel("打印模板:"), 2, 2); gl.addWidget(self.lbl_tmpl_name, 2, 3, 1, 3)
 
         main_layout.addWidget(grp)
 
-        # ================= 3. 控制栏 (日期/批次/统计) =================
+        # ================= 3. 控制栏 =================
         h_ctrl = QHBoxLayout()
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
         self.combo_repair.currentIndexChanged.connect(self.update_box_preview)
         
-        # UI调整：字体加大
         self.lbl_daily = QLabel("今日: 0")
         self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 20px;") 
         
@@ -103,10 +101,9 @@ class PrintPage(QWidget):
         h_ctrl.addWidget(self.lbl_daily)
         main_layout.addLayout(h_ctrl)
 
-        # ================= 4. 扫描与列表区 (核心UI调整) =================
+        # ================= 4. 扫描与列表区 =================
         h_work = QHBoxLayout()
         
-        # --- 左侧：箱号与扫描框 ---
         v_scan = QVBoxLayout()
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
@@ -120,7 +117,6 @@ class PrintPage(QWidget):
         v_scan.addWidget(QLabel("当前箱号:")); v_scan.addWidget(self.lbl_box_no)
         v_scan.addWidget(self.input_sn); v_scan.addStretch()
         
-        # --- 右侧：SN列表 ---
         v_list = QVBoxLayout()
         h_btns = QHBoxLayout()
         b_all = QPushButton("全选"); b_all.clicked.connect(lambda: self.list_sn.selectAll())
@@ -129,11 +125,10 @@ class PrintPage(QWidget):
         
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.list_sn.setStyleSheet("font-size: 14px;") # 列表文字稍大清晰
+        self.list_sn.setStyleSheet("font-size: 14px;")
         
         v_list.addLayout(h_btns); v_list.addWidget(self.list_sn)
         
-        # UI调整：调整左右比例，左边7(宽)，右边3(窄)
         h_work.addLayout(v_scan, 7)
         h_work.addLayout(v_list, 3)
         
@@ -145,11 +140,6 @@ class PrintPage(QWidget):
         self.btn_print.setCursor(Qt.PointingHandCursor)
         self.btn_print.clicked.connect(self.print_label)
         main_layout.addWidget(self.btn_print)
-
-        # 补充定义颜色Label (避免报错)
-        self.lbl_color = QLabel("--") 
-
-    # --- 逻辑部分保持不变，增加了列表序号刷新 ---
 
     def refresh_data(self):
         self.p_cache = []
@@ -186,7 +176,7 @@ class PrintPage(QWidget):
         self.lbl_sn4.setText(p.get('sn4',''))
         self.lbl_spec.setText(p.get('spec',''))
         self.lbl_model.setText(p.get('model',''))
-        self.lbl_color.setText(p.get('color','')) # 修复：更新颜色
+        self.lbl_color.setText(p.get('color',''))
         self.lbl_code69.setText(p.get('code69',''))
         self.lbl_qty.setText(str(p.get('qty','')))
         
@@ -207,7 +197,7 @@ class PrintPage(QWidget):
              if res: self.current_sn_rule={'fmt':res[0], 'len':res[1]}
 
         self.current_sn_list=[]; 
-        self.update_sn_list_ui() # 统一使用UI刷新函数
+        self.update_sn_list_ui() 
         self.update_box_preview(); self.update_daily(); self.input_sn.setFocus()
 
     def update_box_preview(self):
@@ -259,7 +249,6 @@ class PrintPage(QWidget):
             except: return False, "正则错误"
         return True, ""
 
-    # UI新增：刷新列表显示，带序号
     def update_sn_list_ui(self):
         self.list_sn.clear()
         for i, (sn, _) in enumerate(self.current_sn_list):
@@ -279,20 +268,15 @@ class PrintPage(QWidget):
         if not ok: return QMessageBox.warning(self,"校验失败", msg)
         
         self.current_sn_list.append((sn, datetime.datetime.now()))
-        self.update_sn_list_ui() # 刷新列表UI
+        self.update_sn_list_ui()
         
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
     def del_sn(self):
-        # 获取选中行的索引 (倒序删除，防止索引错位)
         rows = sorted([item.row() for item in self.list_sn.selectedItems()], reverse=True)
         if not rows: return
-        
-        for row in rows:
-            # 从数据源中删除
-            del self.current_sn_list[row]
-            
-        self.update_sn_list_ui() # 重新生成带序号的列表
+        for row in rows: del self.current_sn_list[row]
+        self.update_sn_list_ui()
 
     def print_label(self):
         if not self.current_product or not self.current_sn_list: return
