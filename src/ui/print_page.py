@@ -25,16 +25,26 @@ class PrintPage(QWidget):
         self.refresh_data()
 
     def init_ui(self):
+        # 主布局：垂直布局 (内容区 + 底部按钮)
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(8)
+        main_layout.setSpacing(10)
 
-        # ================= 1. 顶部搜索与产品列表 =================
-        h_search = QHBoxLayout()
+        # 内容区：水平布局 (左侧操作区 + 右侧SN列表区)
+        content_layout = QHBoxLayout()
+        
+        # ==================== 左侧操作区 (占比 7) ====================
+        left_panel = QVBoxLayout()
+        left_panel.setSpacing(10)
+
+        # 1. 搜索框
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 搜索产品...")
+        self.input_search.setStyleSheet("font-size: 14px; padding: 6px;")
         self.input_search.textChanged.connect(self.filter_products)
-        
+        left_panel.addWidget(self.input_search)
+
+        # 2. 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
@@ -42,26 +52,27 @@ class PrintPage(QWidget):
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table_product.setMaximumHeight(140) 
+        self.table_product.setMaximumHeight(150) # 限制高度
         self.table_product.itemClicked.connect(self.on_product_select)
-        
-        main_layout.addLayout(h_search)
-        main_layout.addWidget(self.input_search)
-        main_layout.addWidget(self.table_product)
+        left_panel.addWidget(self.table_product)
 
-        # ================= 2. 产品详情区域 =================
+        # 3. 产品详情 & 设置区域
         grp = QGroupBox("产品详情")
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; border: 1px solid #ccc; margin-top: 6px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }")
-        gl = QGridLayout(grp)
-        gl.setContentsMargins(10, 15, 10, 5)
+        
+        # 详情内部布局
+        v_details = QVBoxLayout(grp)
+        
+        # 3.1 网格显示具体信息
+        gl = QGridLayout()
+        gl.setContentsMargins(5, 10, 5, 5)
         gl.setHorizontalSpacing(20)
         
-        # --- 修复点：在此处统一初始化所有Label，包括 lbl_color ---
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_spec = QLabel("--"); self.lbl_model = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_qty = QLabel("--")
         self.lbl_rule_name = QLabel("无"); self.lbl_tmpl_name = QLabel("无")
-        self.lbl_color = QLabel("--") # 补上颜色的定义
+        self.lbl_color = QLabel("--")
 
         style_lbl = "color: #555;"
         style_val = "color: #2980b9; font-weight: bold; font-size: 13px;"
@@ -75,7 +86,7 @@ class PrintPage(QWidget):
         add_field(0, 0, "名称:", self.lbl_name)
         add_field(0, 2, "规格:", self.lbl_spec)
         add_field(0, 4, "型号:", self.lbl_model)
-        add_field(0, 6, "颜色:", self.lbl_color) # 现在这里不会报错了
+        add_field(0, 6, "颜色:", self.lbl_color)
         
         add_field(1, 0, "SN前4:", self.lbl_sn4)
         add_field(1, 2, "69码:", self.lbl_code69)
@@ -83,63 +94,83 @@ class PrintPage(QWidget):
         
         gl.addWidget(QLabel("箱号规则:"), 2, 0); gl.addWidget(self.lbl_rule_name, 2, 1)
         gl.addWidget(QLabel("打印模板:"), 2, 2); gl.addWidget(self.lbl_tmpl_name, 2, 3, 1, 3)
+        v_details.addLayout(gl)
 
-        main_layout.addWidget(grp)
-
-        # ================= 3. 控制栏 =================
+        # 3.2 日期与批次控制
         h_ctrl = QHBoxLayout()
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
         self.combo_repair.currentIndexChanged.connect(self.update_box_preview)
         
-        self.lbl_daily = QLabel("今日: 0")
-        self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 20px;") 
-        
         h_ctrl.addWidget(QLabel("日期:")); h_ctrl.addWidget(self.date_prod)
         h_ctrl.addWidget(QLabel("批次:")); h_ctrl.addWidget(self.combo_repair)
         h_ctrl.addStretch()
-        h_ctrl.addWidget(self.lbl_daily)
-        main_layout.addLayout(h_ctrl)
+        v_details.addLayout(h_ctrl)
 
-        # ================= 4. 扫描与列表区 =================
-        h_work = QHBoxLayout()
-        
-        v_scan = QVBoxLayout()
+        # 3.3 当前箱号显示
+        v_details.addWidget(QLabel("当前箱号:"))
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
-        self.lbl_box_no.setStyleSheet("font-size: 24px; font-weight: bold; color: #c0392b; padding: 10px 0;")
-        
+        self.lbl_box_no.setStyleSheet("font-size: 26px; font-weight: bold; color: #c0392b; padding: 5px 0;")
+        v_details.addWidget(self.lbl_box_no)
+
+        left_panel.addWidget(grp)
+
+        # 4. SN 输入框 (增大显示)
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
-        self.input_sn.setStyleSheet("font-size: 20px; padding: 10px; border: 2px solid #3498db; border-radius: 4px;")
+        # 增加高度和字体大小
+        self.input_sn.setStyleSheet("font-size: 22px; padding: 12px; border: 2px solid #3498db; border-radius: 4px; color: #333;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
+        left_panel.addWidget(self.input_sn)
         
-        v_scan.addWidget(QLabel("当前箱号:")); v_scan.addWidget(self.lbl_box_no)
-        v_scan.addWidget(self.input_sn); v_scan.addStretch()
+        # 撑开底部，让上面紧凑
+        left_panel.addStretch()
+
+        # ==================== 右侧 SN列表区 (占比 3) ====================
+        right_panel = QVBoxLayout()
         
-        v_list = QVBoxLayout()
-        h_btns = QHBoxLayout()
-        b_all = QPushButton("全选"); b_all.clicked.connect(lambda: self.list_sn.selectAll())
-        b_del = QPushButton("删除"); b_del.clicked.connect(self.del_sn)
-        h_btns.addWidget(QLabel("SN列表")); h_btns.addStretch(); h_btns.addWidget(b_all); h_btns.addWidget(b_del)
+        # 1. 右侧顶部工具栏 (计数 + 按钮)
+        h_list_tools = QHBoxLayout()
         
+        self.lbl_daily = QLabel("今日: 0")
+        self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 16px;")
+        
+        btn_all = QPushButton("全选"); btn_all.clicked.connect(lambda: self.list_sn.selectAll())
+        btn_del = QPushButton("删除"); btn_del.clicked.connect(self.del_sn)
+        
+        h_list_tools.addWidget(QLabel("SN列表"))
+        h_list_tools.addStretch()
+        h_list_tools.addWidget(self.lbl_daily)
+        
+        # 按钮行
+        h_btns_row = QHBoxLayout()
+        h_btns_row.addStretch()
+        h_btns_row.addWidget(btn_all)
+        h_btns_row.addWidget(btn_del)
+
+        right_panel.addLayout(h_list_tools)
+        right_panel.addLayout(h_btns_row)
+
+        # 2. 列表控件
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_sn.setStyleSheet("font-size: 14px;")
-        
-        v_list.addLayout(h_btns); v_list.addWidget(self.list_sn)
-        
-        h_work.addLayout(v_scan, 7)
-        h_work.addLayout(v_list, 3)
-        
-        main_layout.addLayout(h_work)
+        right_panel.addWidget(self.list_sn)
 
-        # ================= 5. 底部按钮 =================
+        # ==================== 组合布局 ====================
+        content_layout.addLayout(left_panel, 7)  # 左侧宽
+        content_layout.addLayout(right_panel, 3) # 右侧窄
+        main_layout.addLayout(content_layout)
+
+        # 底部打印按钮
         self.btn_print = QPushButton("打印 / 封箱")
-        self.btn_print.setStyleSheet("background:#e67e22; color:white; padding:12px; font-size:18px; font-weight:bold; border-radius: 5px;")
+        self.btn_print.setStyleSheet("background:#e67e22; color:white; padding:15px; font-size:18px; font-weight:bold; border-radius: 5px;")
         self.btn_print.setCursor(Qt.PointingHandCursor)
         self.btn_print.clicked.connect(self.print_label)
         main_layout.addWidget(self.btn_print)
+
+    # --- 逻辑功能保持不变 ---
 
     def refresh_data(self):
         self.p_cache = []
@@ -176,7 +207,7 @@ class PrintPage(QWidget):
         self.lbl_sn4.setText(p.get('sn4',''))
         self.lbl_spec.setText(p.get('spec',''))
         self.lbl_model.setText(p.get('model',''))
-        self.lbl_color.setText(p.get('color',''))
+        self.lbl_color.setText(p.get('color','')) 
         self.lbl_code69.setText(p.get('code69',''))
         self.lbl_qty.setText(str(p.get('qty','')))
         
