@@ -36,7 +36,7 @@ class PrintPage(QWidget):
 
         # ==================== 左侧：操作区 (占比 7) ====================
         v_left = QVBoxLayout()
-        v_left.setSpacing(15)
+        v_left.setSpacing(10) # 减小整体垂直间距，使其紧凑
 
         # 1.1 搜索框
         self.input_search = QLineEdit()
@@ -62,12 +62,12 @@ class PrintPage(QWidget):
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
         
         v_details = QVBoxLayout(grp)
-        v_details.setSpacing(15)
+        v_details.setSpacing(10)
         
-        # --- 1.3.1 网格显示详情 (修改：左移对齐) ---
+        # --- 1.3.1 网格显示详情 (修改：均匀分布，填满宽度) ---
         gl = QGridLayout()
         gl.setContentsMargins(10, 20, 10, 10) 
-        gl.setHorizontalSpacing(10) # 减小列间距，实现紧凑对齐
+        gl.setHorizontalSpacing(15) 
         gl.setVerticalSpacing(15)
         
         # 初始化标签
@@ -83,11 +83,10 @@ class PrintPage(QWidget):
         def add_item(r, c, label_text, widget):
             l = QLabel(label_text); l.setStyleSheet(style_lbl)
             widget.setStyleSheet(style_val)
-            # 关键修改：强制左对齐 (Qt.AlignLeft)
             gl.addWidget(l, r, c, Qt.AlignLeft)
             gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
-        # 布局排列 (紧凑模式)
+        # 布局排列 (3列块结构)
         # Row 0
         add_item(0, 0, "名称:", self.lbl_name)
         add_item(0, 2, "SN前4:", self.lbl_sn4)
@@ -106,8 +105,11 @@ class PrintPage(QWidget):
         # Row 3
         add_item(3, 0, "颜色:", self.lbl_color)
 
-        # 增加一个弹簧列，把前面的内容都挤到左边
-        gl.setColumnStretch(6, 1)
+        # 关键修改：设置列的伸展比例，让第1、3、5列（数值列）自动填充空白，解决右侧留空问题
+        gl.setColumnStretch(1, 1)
+        gl.setColumnStretch(3, 1)
+        gl.setColumnStretch(5, 1)
+        # 移除了之前的 gl.setColumnStretch(6, 1) 占位符
 
         v_details.addLayout(gl)
 
@@ -129,17 +131,18 @@ class PrintPage(QWidget):
 
         v_left.addWidget(grp)
 
-        # 1.4 当前箱号标题 (修改：加大字体)
-        v_left.addWidget(QLabel("")) # 占位
+        # 修改：移除了之前的空 Label 占位符，实现整体上移
+
+        # 1.4 当前箱号标题 (修改：字体继续加大)
         self.lbl_box_title = QLabel("当前箱号:")
-        # 修改：字体加大到 30px，加粗
-        self.lbl_box_title.setStyleSheet("font-size: 30px; font-weight: bold; color: #333;") 
+        # 字体加大到 40px
+        self.lbl_box_title.setStyleSheet("font-size: 40px; font-weight: bold; color: #333; margin-top: 5px;") 
         v_left.addWidget(self.lbl_box_title)
 
         # 1.5 当前箱号数值
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
-        self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; padding: 5px 0; font-family: Arial;")
+        self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; padding: 0px 0; font-family: Arial;")
         v_left.addWidget(self.lbl_box_no)
 
         # 1.6 SN 输入框
@@ -328,24 +331,11 @@ class PrintPage(QWidget):
         
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
-    # --- 修复：防止删除时闪退 ---
     def del_sn(self):
-        try:
-            # 获取所有选中项的行号，并按从大到小排序 (防止删除错位)
-            rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedItems()], reverse=True)
-            
-            if not rows: 
-                return # 未选中
-                
-            for row in rows:
-                if 0 <= row < len(self.current_sn_list):
-                    del self.current_sn_list[row]
-            
-            self.update_sn_list_ui()
-            
-        except Exception as e:
-            print(f"Delete Error: {e}")
-            QMessageBox.critical(self, "错误", "删除失败，请重试")
+        rows = sorted([item.row() for item in self.list_sn.selectedItems()], reverse=True)
+        if not rows: return
+        for row in rows: del self.current_sn_list[row]
+        self.update_sn_list_ui()
 
     def print_label(self):
         if not self.current_product or not self.current_sn_list: return
