@@ -25,26 +25,27 @@ class PrintPage(QWidget):
         self.refresh_data()
 
     def init_ui(self):
-        # 主布局：垂直布局 (内容区 + 底部按钮)
+        # 0. 主布局：垂直布局 (内容区 + 底部按钮)
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        # 内容区：水平布局 (左侧操作区 + 右侧SN列表区)
+        # 1. 内容区：水平布局 (左侧产品选择 + 右侧操作区)
         content_layout = QHBoxLayout()
-        
-        # ==================== 左侧操作区 (占比 7) ====================
-        left_panel = QVBoxLayout()
-        left_panel.setSpacing(10)
+        content_layout.setSpacing(15)
 
-        # 1. 搜索框
+        # ==================== 左侧：产品选择区 (占比 4) ====================
+        v_selection = QVBoxLayout()
+        v_selection.setSpacing(10)
+
+        # 1.1 搜索框
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 搜索产品...")
         self.input_search.setStyleSheet("font-size: 14px; padding: 6px;")
         self.input_search.textChanged.connect(self.filter_products)
-        left_panel.addWidget(self.input_search)
+        v_selection.addWidget(self.input_search)
 
-        # 2. 产品列表
+        # 1.2 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6) # 名称, 规格, 颜色, 69码, SN前4, 箱规
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
@@ -52,22 +53,27 @@ class PrintPage(QWidget):
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table_product.setMaximumHeight(150) # 限制高度
         self.table_product.itemClicked.connect(self.on_product_select)
-        left_panel.addWidget(self.table_product)
+        v_selection.addWidget(self.table_product) # 列表占据剩余垂直空间
+        
+        content_layout.addLayout(v_selection, 4) 
 
-        # 3. 产品详情 & 设置区域
+        # ==================== 右侧：操作仪表板 (占比 6) ====================
+        v_operation = QVBoxLayout()
+        v_operation.setSpacing(10)
+
+        # 2.1 产品详情 Group Box (顶部)
         grp = QGroupBox("产品详情")
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; border: 1px solid #ccc; margin-top: 6px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }")
         
-        # 详情内部布局
-        v_details = QVBoxLayout(grp)
+        v_details_in_grp = QVBoxLayout(grp)
         
-        # 3.1 网格显示具体信息
+        # 2.1.1 网格显示具体信息
         gl = QGridLayout()
         gl.setContentsMargins(5, 10, 5, 5)
         gl.setHorizontalSpacing(20)
         
+        # 标签初始化
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_spec = QLabel("--"); self.lbl_model = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_qty = QLabel("--")
@@ -83,20 +89,17 @@ class PrintPage(QWidget):
             gl.addWidget(l, row, col)
             gl.addWidget(val_widget, row, col+1)
 
-        add_field(0, 0, "名称:", self.lbl_name)
-        add_field(0, 2, "规格:", self.lbl_spec)
-        add_field(0, 4, "型号:", self.lbl_model)
-        add_field(0, 6, "颜色:", self.lbl_color)
+        add_field(0, 0, "名称:", self.lbl_name); add_field(0, 2, "规格:", self.lbl_spec)
+        add_field(0, 4, "型号:", self.lbl_model); add_field(0, 6, "颜色:", self.lbl_color)
         
-        add_field(1, 0, "SN前4:", self.lbl_sn4)
-        add_field(1, 2, "69码:", self.lbl_code69)
+        add_field(1, 0, "SN前4:", self.lbl_sn4); add_field(1, 2, "69码:", self.lbl_code69)
         add_field(1, 4, "整箱数:", self.lbl_qty)
         
         gl.addWidget(QLabel("箱号规则:"), 2, 0); gl.addWidget(self.lbl_rule_name, 2, 1)
         gl.addWidget(QLabel("打印模板:"), 2, 2); gl.addWidget(self.lbl_tmpl_name, 2, 3, 1, 3)
-        v_details.addLayout(gl)
+        v_details_in_grp.addLayout(gl)
 
-        # 3.2 日期与批次控制
+        # 2.1.2 日期与批次控制
         h_ctrl = QHBoxLayout()
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
@@ -105,33 +108,41 @@ class PrintPage(QWidget):
         h_ctrl.addWidget(QLabel("日期:")); h_ctrl.addWidget(self.date_prod)
         h_ctrl.addWidget(QLabel("批次:")); h_ctrl.addWidget(self.combo_repair)
         h_ctrl.addStretch()
-        v_details.addLayout(h_ctrl)
+        v_details_in_grp.addLayout(h_ctrl)
 
-        # 3.3 当前箱号显示
-        v_details.addWidget(QLabel("当前箱号:"))
+        v_operation.addWidget(grp)
+
+        # 2.2 当前箱号显示 (高亮)
+        v_operation.addWidget(QLabel("当前箱号:"))
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
-        self.lbl_box_no.setStyleSheet("font-size: 26px; font-weight: bold; color: #c0392b; padding: 5px 0;")
-        v_details.addWidget(self.lbl_box_no)
+        self.lbl_box_no.setAlignment(Qt.AlignCenter)
+        self.lbl_box_no.setStyleSheet("font-size: 26px; font-weight: bold; color: #c0392b; padding: 8px 5px; background: #ecf0f1; border: 1px solid #ccc; border-radius: 4px;")
+        v_operation.addWidget(self.lbl_box_no)
 
-        left_panel.addWidget(grp)
+        # 2.3 SN 扫描/列表区 (水平分栏)
+        h_scan_area = QHBoxLayout()
+        h_scan_area.setSpacing(10)
 
-        # 4. SN 输入框 (增大显示)
+        # 2.3.1 扫描输入 (h_scan_area 左侧)
+        v_scan = QVBoxLayout()
+        v_scan.setSpacing(5)
+        v_scan.addWidget(QLabel("扫描SN:"))
+        
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setStyleSheet("font-size: 22px; padding: 12px; border: 2px solid #3498db; border-radius: 4px; color: #333;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
-        left_panel.addWidget(self.input_sn)
-        
-        # 撑开底部，让上面紧凑
-        left_panel.addStretch()
+        v_scan.addWidget(self.input_sn)
+        v_scan.addStretch()
+        h_scan_area.addLayout(v_scan, 4) 
 
-        # ==================== 右侧 SN列表区 (占比 3) ====================
-        right_panel = QVBoxLayout()
+        # 2.3.2 SN 列表 (h_scan_area 右侧)
+        v_list = QVBoxLayout()
+        v_list.setSpacing(5)
         
-        # 1. 右侧顶部工具栏 (计数 + 按钮)
+        # 列表顶部工具栏 (计数 + 按钮)
         h_list_tools = QHBoxLayout()
-        
         self.lbl_daily = QLabel("今日: 0")
         self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 16px;")
         
@@ -142,27 +153,28 @@ class PrintPage(QWidget):
         h_list_tools.addStretch()
         h_list_tools.addWidget(self.lbl_daily)
         
-        # 按钮行
         h_btns_row = QHBoxLayout()
         h_btns_row.addStretch()
         h_btns_row.addWidget(btn_all)
         h_btns_row.addWidget(btn_del)
 
-        right_panel.addLayout(h_list_tools)
-        right_panel.addLayout(h_btns_row)
-
-        # 2. 列表控件
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_sn.setStyleSheet("font-size: 14px;")
-        right_panel.addWidget(self.list_sn)
 
-        # ==================== 组合布局 ====================
-        content_layout.addLayout(left_panel, 7)  # 左侧宽
-        content_layout.addLayout(right_panel, 3) # 右侧窄
+        v_list.addLayout(h_list_tools)
+        v_list.addLayout(h_btns_row)
+        v_list.addWidget(self.list_sn)
+        
+        h_scan_area.addLayout(v_list, 6) # 给列表更多空间
+
+        v_operation.addLayout(h_scan_area)
+        v_operation.addStretch() # 撑开底部
+
+        content_layout.addLayout(v_operation, 6)
         main_layout.addLayout(content_layout)
 
-        # 底部打印按钮
+        # 3. 底部打印按钮
         self.btn_print = QPushButton("打印 / 封箱")
         self.btn_print.setStyleSheet("background:#e67e22; color:white; padding:15px; font-size:18px; font-weight:bold; border-radius: 5px;")
         self.btn_print.setCursor(Qt.PointingHandCursor)
