@@ -36,7 +36,7 @@ class PrintPage(QWidget):
 
         # ==================== 左侧：操作区 (占比 7) ====================
         v_left = QVBoxLayout()
-        v_left.setSpacing(10) # 减小整体垂直间距，使其紧凑
+        v_left.setSpacing(5) # 修改：大幅减小垂直间距，让组件更紧凑
 
         # 1.1 搜索框
         self.input_search = QLineEdit()
@@ -57,20 +57,19 @@ class PrintPage(QWidget):
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
 
-        # 1.3 产品详情 & 设置区域
+        # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
-        grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
+        grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-top: 5px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
         
         v_details = QVBoxLayout(grp)
-        v_details.setSpacing(10)
+        v_details.setContentsMargins(10, 20, 10, 10)
+        v_details.setSpacing(0)
         
-        # --- 1.3.1 网格显示详情 (修改：均匀分布，填满宽度) ---
+        # --- 网格显示详情 ---
         gl = QGridLayout()
-        gl.setContentsMargins(10, 20, 10, 10) 
         gl.setHorizontalSpacing(15) 
-        gl.setVerticalSpacing(15)
+        gl.setVerticalSpacing(10)
         
-        # 初始化标签
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_sn_rule = QLabel("无"); self.lbl_spec = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_box_rule_name = QLabel("无")
@@ -86,70 +85,62 @@ class PrintPage(QWidget):
             gl.addWidget(l, r, c, Qt.AlignLeft)
             gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
-        # 布局排列 (3列块结构)
         # Row 0
         add_item(0, 0, "名称:", self.lbl_name)
         add_item(0, 2, "SN前4:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
-        
         # Row 1
         add_item(1, 0, "规格:", self.lbl_spec)
         add_item(1, 2, "69码:", self.lbl_code69)
         add_item(1, 4, "箱号规则:", self.lbl_box_rule_name)
-        
         # Row 2
         add_item(2, 0, "型号:", self.lbl_model)
         add_item(2, 2, "整箱数:", self.lbl_qty)
         add_item(2, 4, "模板:", self.lbl_tmpl_name)
-        
         # Row 3
         add_item(3, 0, "颜色:", self.lbl_color)
 
-        # 关键修改：设置列的伸展比例，让第1、3、5列（数值列）自动填充空白，解决右侧留空问题
-        gl.setColumnStretch(1, 1)
-        gl.setColumnStretch(3, 1)
-        gl.setColumnStretch(5, 1)
-        # 移除了之前的 gl.setColumnStretch(6, 1) 占位符
-
+        gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
         v_details.addLayout(gl)
+        
+        v_left.addWidget(grp)
 
-        # --- 1.3.2 日期与批次 ---
+        # 1.4 日期与批次 (修改：移出Group Box，紧贴下方)
         h_ctrl = QHBoxLayout()
+        h_ctrl.setContentsMargins(0, 5, 0, 5) # 微调上下间距
+        
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
-        self.date_prod.setStyleSheet("font-size: 16px; padding: 5px;")
+        self.date_prod.setStyleSheet("font-size: 16px; padding: 2px;")
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
-        self.combo_repair.setStyleSheet("font-size: 16px; padding: 5px;")
+        self.combo_repair.setStyleSheet("font-size: 16px; padding: 2px;")
         self.combo_repair.currentIndexChanged.connect(self.update_box_preview)
         
         l_date = QLabel("日期:"); l_date.setStyleSheet("font-size: 16px;")
         l_batch = QLabel("批次:"); l_batch.setStyleSheet("font-size: 16px;")
         
         h_ctrl.addWidget(l_date); h_ctrl.addWidget(self.date_prod)
+        h_ctrl.addSpacing(20)
         h_ctrl.addWidget(l_batch); h_ctrl.addWidget(self.combo_repair)
         h_ctrl.addStretch()
-        v_details.addLayout(h_ctrl)
+        
+        v_left.addLayout(h_ctrl)
 
-        v_left.addWidget(grp)
-
-        # 修改：移除了之前的空 Label 占位符，实现整体上移
-
-        # 1.4 当前箱号标题 (修改：字体继续加大)
+        # 1.5 当前箱号标题 (紧贴日期栏)
         self.lbl_box_title = QLabel("当前箱号:")
-        # 字体加大到 40px
-        self.lbl_box_title.setStyleSheet("font-size: 40px; font-weight: bold; color: #333; margin-top: 5px;") 
+        self.lbl_box_title.setStyleSheet("font-size: 40px; font-weight: bold; color: #333; margin-bottom: -5px;") 
         v_left.addWidget(self.lbl_box_title)
 
-        # 1.5 当前箱号数值
+        # 1.6 当前箱号数值 (紧贴标题)
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
-        self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; padding: 0px 0; font-family: Arial;")
+        self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; margin-top: -5px; font-family: Arial;")
         v_left.addWidget(self.lbl_box_no)
 
-        # 1.6 SN 输入框
+        # 1.7 SN 输入框 (修改：加高一倍，字体增大)
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
-        self.input_sn.setMinimumHeight(80) 
-        self.input_sn.setStyleSheet("font-size: 35px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333;")
+        self.input_sn.setMinimumHeight(120) # 修改：高度由80增加到120
+        self.input_sn.setStyleSheet("font-size: 45px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333;") # 修改：字体由35增加到45
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
@@ -160,7 +151,6 @@ class PrintPage(QWidget):
         
         # 2.1 顶部工具栏
         h_tools = QHBoxLayout()
-        
         self.lbl_daily = QLabel("今日: 0")
         self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 24px;")
         
