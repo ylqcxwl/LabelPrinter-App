@@ -36,17 +36,16 @@ class PrintPage(QWidget):
 
         # ==================== 左侧：操作区 (占比 7) ====================
         v_left = QVBoxLayout()
-        # 修改：垂直间距设为 0，去除圈出的空白
-        v_left.setSpacing(0) 
+        v_left.setSpacing(0) # 垂直间距设为 0
 
-        # 1.1 搜索框 (单独加点底部间距，别太挤)
+        # 1.1 搜索框
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 搜索产品...")
         self.input_search.setStyleSheet("font-size: 14px; padding: 6px; margin-bottom: 10px;")
         self.input_search.textChanged.connect(self.filter_products)
         v_left.addWidget(self.input_search)
 
-        # 1.2 产品列表 (单独加点底部间距)
+        # 1.2 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
@@ -67,7 +66,7 @@ class PrintPage(QWidget):
         v_details.setContentsMargins(10, 20, 10, 10)
         v_details.setSpacing(0)
         
-        # --- 网格显示详情 (修改：增加 SKU 字段) ---
+        # --- 网格显示详情 ---
         gl = QGridLayout()
         gl.setHorizontalSpacing(15) 
         gl.setVerticalSpacing(10)
@@ -77,7 +76,7 @@ class PrintPage(QWidget):
         self.lbl_code69 = QLabel("--"); self.lbl_box_rule_name = QLabel("无")
         self.lbl_model = QLabel("--"); self.lbl_qty = QLabel("--")
         self.lbl_tmpl_name = QLabel("无"); self.lbl_color = QLabel("--")
-        self.lbl_sku = QLabel("--") # 新增 SKU 标签
+        self.lbl_sku = QLabel("--")
 
         style_lbl = "color: #666; font-size: 16px;"
         style_val = "color: #2980b9; font-weight: bold; font-size: 18px;"
@@ -92,57 +91,57 @@ class PrintPage(QWidget):
         add_item(0, 0, "名称:", self.lbl_name)
         add_item(0, 2, "SN前4:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
-        
         # Row 1
         add_item(1, 0, "规格:", self.lbl_spec)
-        add_item(1, 2, "SKU:", self.lbl_sku) # 修改：69码位置改为 SKU
+        add_item(1, 2, "SKU:", self.lbl_sku)
         add_item(1, 4, "箱号规则:", self.lbl_box_rule_name)
-        
         # Row 2
         add_item(2, 0, "型号:", self.lbl_model)
-        add_item(2, 2, "69码:", self.lbl_code69) # 修改：69码下移
+        add_item(2, 2, "69码:", self.lbl_code69)
         add_item(2, 4, "模板:", self.lbl_tmpl_name)
-        
         # Row 3
         add_item(3, 0, "颜色:", self.lbl_color)
-        add_item(3, 2, "整箱数:", self.lbl_qty) # 修改：整箱数下移
+        add_item(3, 2, "整箱数:", self.lbl_qty)
 
         gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
         v_details.addLayout(gl)
-        
         v_left.addWidget(grp)
 
-        # 1.4 日期与批次
+        # 1.4 日期与批次 (修改：加大3倍)
         h_ctrl = QHBoxLayout()
-        # 修改：上下边距设为0，紧贴
-        h_ctrl.setContentsMargins(0, 0, 0, 0) 
+        h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
+        # 定义大字体样式
+        # 字体大小设为 36px (约是原来的3倍)，最小高度设为 50px 以容纳字体
+        style_big_ctrl = "font-size: 36px; padding: 5px; min-height: 50px;"
+        style_big_lbl = "font-size: 36px; font-weight: bold; color: #333;"
+
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
-        self.date_prod.setStyleSheet("font-size: 16px; padding: 2px;")
+        self.date_prod.setStyleSheet(style_big_ctrl)
+        
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
-        self.combo_repair.setStyleSheet("font-size: 16px; padding: 2px;")
+        self.combo_repair.setStyleSheet(style_big_ctrl)
         self.combo_repair.currentIndexChanged.connect(self.update_box_preview)
         
-        l_date = QLabel("日期:"); l_date.setStyleSheet("font-size: 16px;")
-        l_batch = QLabel("批次:"); l_batch.setStyleSheet("font-size: 16px;")
+        l_date = QLabel("日期:"); l_date.setStyleSheet(style_big_lbl)
+        l_batch = QLabel("批次:"); l_batch.setStyleSheet(style_big_lbl)
         
         h_ctrl.addWidget(l_date); h_ctrl.addWidget(self.date_prod)
-        h_ctrl.addSpacing(20)
+        h_ctrl.addSpacing(30)
         h_ctrl.addWidget(l_batch); h_ctrl.addWidget(self.combo_repair)
         h_ctrl.addStretch()
         
         v_left.addLayout(h_ctrl)
 
-        # 1.5 当前箱号标题
+        # 1.5 当前箱号标题 (修改：加大1倍)
         self.lbl_box_title = QLabel("当前箱号:")
-        # 修改：去除 margin，紧贴上方
-        self.lbl_box_title.setStyleSheet("font-size: 40px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
+        # 字体从 40px 加大到 70px (接近翻倍)
+        self.lbl_box_title.setStyleSheet("font-size: 70px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         v_left.addWidget(self.lbl_box_title)
 
         # 1.6 当前箱号数值
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
-        # 修改：去除 margin/padding，紧贴标题
         self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; margin: 0px; padding: 0px; font-family: Arial;")
         v_left.addWidget(self.lbl_box_no)
 
@@ -150,7 +149,6 @@ class PrintPage(QWidget):
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
-        # 修改：输入框顶部也去除 margin (通过 style sheet 这里的 margin-top: 0px 确保)
         self.input_sn.setStyleSheet("font-size: 45px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
@@ -164,7 +162,7 @@ class PrintPage(QWidget):
         h_tools = QHBoxLayout()
         
         self.lbl_daily = QLabel("今日: 0")
-        self.lbl_daily.setStyleSheet("color: red; font-weight: bold; font-size: 24px;")
+        self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 24px;")
         
         btn_all = QPushButton("全选"); btn_all.clicked.connect(lambda: self.list_sn.selectAll())
         btn_del = QPushButton("删除"); btn_del.clicked.connect(self.del_sn)
@@ -177,19 +175,17 @@ class PrintPage(QWidget):
 
         v_right.addLayout(h_tools)
 
-        # 2.2 列表
+        # 2.2 列表 (字体 23px)
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        # 修改：字体加大 1.5倍 (15px * 1.5 ≈ 23px)
         self.list_sn.setStyleSheet("font-size: 23px;")
         v_right.addWidget(self.list_sn)
 
         content_layout.addLayout(v_right, 3)
         main_layout.addLayout(content_layout)
 
-        # 3. 底部打印按钮
+        # 3. 底部打印按钮 (高度 90px)
         self.btn_print = QPushButton("打印 / 封箱")
-        # 修改：高度加倍，min-height 设置为 90px
         self.btn_print.setMinimumHeight(90)
         self.btn_print.setStyleSheet("background:#e67e22; color:white; font-size:24px; font-weight:bold; border-radius: 5px;")
         self.btn_print.setCursor(Qt.PointingHandCursor)
@@ -239,7 +235,7 @@ class PrintPage(QWidget):
         self.lbl_color.setText(str(p.get('color',''))) 
         self.lbl_code69.setText(str(p.get('code69','')))
         self.lbl_qty.setText(str(p.get('qty','')))
-        self.lbl_sku.setText(str(p.get('sku',''))) # 修改：设置SKU
+        self.lbl_sku.setText(str(p.get('sku','')))
         
         tmpl = p.get('template_path','')
         self.lbl_tmpl_name.setText(os.path.basename(tmpl) if tmpl else "未设置")
