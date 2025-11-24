@@ -164,7 +164,7 @@ class PrintPage(QWidget):
         h_tools = QHBoxLayout()
         
         self.lbl_daily = QLabel("今日: 0")
-        self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 24px;")
+        self.lbl_daily.setStyleSheet("color: red; font-weight: bold; font-size: 24px;")
         
         btn_all = QPushButton("全选"); btn_all.clicked.connect(lambda: self.list_sn.selectAll())
         btn_del = QPushButton("删除"); btn_del.clicked.connect(self.del_sn)
