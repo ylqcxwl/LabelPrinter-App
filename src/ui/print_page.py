@@ -57,28 +57,27 @@ class PrintPage(QWidget):
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
 
-        # 1.3 产品详情 & 设置区域 (核心修改区)
+        # 1.3 产品详情 & 设置区域
         grp = QGroupBox("产品详情")
-        # 修改：加大 GroupBox 标题字体
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
         
         v_details = QVBoxLayout(grp)
-        v_details.setSpacing(15) # 增加内部间距
+        v_details.setSpacing(15) 
         
-        # --- 1.3.1 网格显示详情 (字体加大50%，按指定顺序) ---
+        # --- 1.3.1 网格显示详情 ---
         gl = QGridLayout()
-        gl.setContentsMargins(10, 20, 10, 10) # 增加内边距，让区域看起来更高
+        gl.setContentsMargins(10, 20, 10, 10) 
         gl.setHorizontalSpacing(30)
         gl.setVerticalSpacing(15)
         
-        # 初始化标签
+        # 初始化标签 (注意：这里去掉了旧的 lbl_box_no_small，防止逻辑混淆)
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_sn_rule = QLabel("无"); self.lbl_spec = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_box_rule_name = QLabel("无")
-        self.lbl_box_no_small = QLabel("--"); self.lbl_qty = QLabel("--") # 小箱号显示在详情里
+        self.lbl_model = QLabel("--"); self.lbl_qty = QLabel("--")
         self.lbl_tmpl_name = QLabel("无"); self.lbl_color = QLabel("--")
 
-        # 样式：标签灰色，数值蓝色加粗，字体加大到 18px (+50%)
+        # 样式
         style_lbl = "color: #666; font-size: 16px;"
         style_val = "color: #2980b9; font-weight: bold; font-size: 18px;"
         
@@ -88,28 +87,22 @@ class PrintPage(QWidget):
             gl.addWidget(l, r, c)
             gl.addWidget(widget, r, c+1)
 
-        # 按您要求的顺序排序：
-        # 第1列: 名称, 规格, 箱号, 颜色
-        # 第2列: SN前4, 69码, 整箱数
-        # 第3列: SN规则, 箱号规则, 模板
-        
-        # Row 0
+        # 第一行：名称、SN前4、SN规则
         add_item(0, 0, "名称:", self.lbl_name)
         add_item(0, 2, "SN前4:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
         
-        # Row 1
+        # 第二行：规格、69码、箱号规则
         add_item(1, 0, "规格:", self.lbl_spec)
         add_item(1, 2, "69码:", self.lbl_code69)
         add_item(1, 4, "箱号规则:", self.lbl_box_rule_name)
         
-        # Row 2
-        # 注：虽然下面有大箱号，但为了满足详情列表完整性，这里也放一个
-        add_item(2, 0, "当前箱号:", self.lbl_box_no_small) 
+        # 第三行：型号(修改处)、整箱数、模板
+        add_item(2, 0, "型号:", self.lbl_model) # 原“当前箱号”位置改为“型号”
         add_item(2, 2, "整箱数:", self.lbl_qty)
         add_item(2, 4, "模板:", self.lbl_tmpl_name)
         
-        # Row 3
+        # 第四行：颜色
         add_item(3, 0, "颜色:", self.lbl_color)
 
         v_details.addLayout(gl)
@@ -132,18 +125,16 @@ class PrintPage(QWidget):
 
         v_left.addWidget(grp)
 
-        # 1.4 当前箱号显示 (红色大字，加大一倍)
-        v_left.addWidget(QLabel("")) # 占位间距
+        # 1.4 当前箱号显示 (大红字)
+        v_left.addWidget(QLabel("当前箱号:"))
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
-        # 字体加大到 50px (原 26px)
         self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; padding: 5px 0; font-family: Arial;")
         v_left.addWidget(self.lbl_box_no)
 
-        # 1.5 SN 输入框 (加高一倍，字体加大)
+        # 1.5 SN 输入框
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
-        # 高度增加，字体加大到 35px
         self.input_sn.setMinimumHeight(80) 
         self.input_sn.setStyleSheet("font-size: 35px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
@@ -154,18 +145,16 @@ class PrintPage(QWidget):
         # ==================== 右侧：SN列表区 (占比 3) ====================
         v_right = QVBoxLayout()
         
-        # 2.1 顶部工具栏 (去掉 "SN列表" 文字)
+        # 2.1 顶部工具栏
         h_tools = QHBoxLayout()
         
         self.lbl_daily = QLabel("今日: 0")
-        # 字体加大 50% (16px -> 24px)
         self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 24px;")
         
         btn_all = QPushButton("全选"); btn_all.clicked.connect(lambda: self.list_sn.selectAll())
         btn_del = QPushButton("删除"); btn_del.clicked.connect(self.del_sn)
         btn_all.setFixedHeight(30); btn_del.setFixedHeight(30)
         
-        # 布局：左边弹簧，右边是今日计数和按钮
         h_tools.addStretch()
         h_tools.addWidget(self.lbl_daily)
         h_tools.addWidget(btn_all)
@@ -220,16 +209,20 @@ class PrintPage(QWidget):
                 self.table_product.setItem(r,5,QTableWidgetItem(rn))
 
     def on_product_select(self, item):
+        # 防止点击空白行崩溃
+        if not item: return
         p = self.table_product.item(item.row(),0).data(Qt.UserRole)
+        if not p: return
+
         self.current_product = p
         
         # 填充详情数据
-        self.lbl_name.setText(p.get('name',''))
-        self.lbl_sn4.setText(p.get('sn4',''))
-        self.lbl_spec.setText(p.get('spec',''))
-        self.lbl_model.setText(p.get('model',''))
-        self.lbl_color.setText(p.get('color','')) 
-        self.lbl_code69.setText(p.get('code69',''))
+        self.lbl_name.setText(str(p.get('name','')))
+        self.lbl_sn4.setText(str(p.get('sn4','')))
+        self.lbl_spec.setText(str(p.get('spec','')))
+        self.lbl_model.setText(str(p.get('model',''))) # 修复：正确设置型号
+        self.lbl_color.setText(str(p.get('color',''))) 
+        self.lbl_code69.setText(str(p.get('code69','')))
         self.lbl_qty.setText(str(p.get('qty','')))
         
         tmpl = p.get('template_path','')
@@ -266,9 +259,8 @@ class PrintPage(QWidget):
             rl = int(self.combo_repair.currentText())
             s, _ = self.rule_engine.generate_box_no(rid, self.current_product, rl)
             self.current_box_no = s
-            # 同时更新大号和小号显示
+            # 修复：只更新大箱号，不再尝试更新已被移除的 lbl_box_no_small
             self.lbl_box_no.setText(s)
-            self.lbl_box_no_small.setText(s)
         except Exception as e:
             self.lbl_box_no.setText("规则错误")
 
