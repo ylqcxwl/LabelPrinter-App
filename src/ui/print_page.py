@@ -46,7 +46,7 @@ class PrintPage(QWidget):
 
         # 2. 产品列表
         self.table_product = QTableWidget()
-        self.table_product.setColumnCount(6)
+        self.table_product.setColumnCount(6) # 名称, 规格, 颜色, 69码, SN前4, 箱规
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -119,7 +119,6 @@ class PrintPage(QWidget):
         # 4. SN 输入框 (增大显示)
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
-        # 增加高度和字体大小
         self.input_sn.setStyleSheet("font-size: 22px; padding: 12px; border: 2px solid #3498db; border-radius: 4px; color: #333;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         left_panel.addWidget(self.input_sn)
