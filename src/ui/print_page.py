@@ -112,9 +112,9 @@ class PrintPage(QWidget):
         h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
         # 定义大字体样式
-        # 字体大小设为 36px (约是原来的3倍)，最小高度设为 50px 以容纳字体
-        style_big_ctrl = "font-size: 36px; padding: 5px; min-height: 50px;"
-        style_big_lbl = "font-size: 36px; font-weight: bold; color: #333;"
+        # 字体大小设为 30px (约是原来的3倍)，最小高度设为 35px 以容纳字体
+        style_big_ctrl = "font-size: 30px; padding: 5px; min-height: 35px;"
+        style_big_lbl = "font-size: 30px; font-weight: bold; color: #333;"
 
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
         self.date_prod.setStyleSheet(style_big_ctrl)
@@ -135,8 +135,8 @@ class PrintPage(QWidget):
 
         # 1.5 当前箱号标题 (修改：加大1倍)
         self.lbl_box_title = QLabel("当前箱号:")
-        # 字体从 40px 加大到 70px (接近翻倍)
-        self.lbl_box_title.setStyleSheet("font-size: 70px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
+        # 字体从 40px 加大到 60px (接近翻倍)
+        self.lbl_box_title.setStyleSheet("font-size: 60px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         v_left.addWidget(self.lbl_box_title)
 
         # 1.6 当前箱号数值
@@ -149,7 +149,7 @@ class PrintPage(QWidget):
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
-        self.input_sn.setStyleSheet("font-size: 45px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
+        self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
@@ -162,7 +162,7 @@ class PrintPage(QWidget):
         h_tools = QHBoxLayout()
         
         self.lbl_daily = QLabel("今日: 0")
-        self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 24px;")
+        self.lbl_daily.setStyleSheet("color: red; font-weight: bold; font-size: 24px;")
         
         btn_all = QPushButton("全选"); btn_all.clicked.connect(lambda: self.list_sn.selectAll())
         btn_del = QPushButton("删除"); btn_del.clicked.connect(self.del_sn)
