@@ -62,48 +62,52 @@ class PrintPage(QWidget):
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
         
         v_details = QVBoxLayout(grp)
-        v_details.setSpacing(15) 
+        v_details.setSpacing(15)
         
-        # --- 1.3.1 网格显示详情 ---
+        # --- 1.3.1 网格显示详情 (修改：左移对齐) ---
         gl = QGridLayout()
         gl.setContentsMargins(10, 20, 10, 10) 
-        gl.setHorizontalSpacing(30)
+        gl.setHorizontalSpacing(10) # 减小列间距，实现紧凑对齐
         gl.setVerticalSpacing(15)
         
-        # 初始化标签 (注意：这里去掉了旧的 lbl_box_no_small，防止逻辑混淆)
+        # 初始化标签
         self.lbl_name = QLabel("--"); self.lbl_sn4 = QLabel("--")
         self.lbl_sn_rule = QLabel("无"); self.lbl_spec = QLabel("--")
         self.lbl_code69 = QLabel("--"); self.lbl_box_rule_name = QLabel("无")
         self.lbl_model = QLabel("--"); self.lbl_qty = QLabel("--")
         self.lbl_tmpl_name = QLabel("无"); self.lbl_color = QLabel("--")
 
-        # 样式
         style_lbl = "color: #666; font-size: 16px;"
         style_val = "color: #2980b9; font-weight: bold; font-size: 18px;"
         
         def add_item(r, c, label_text, widget):
             l = QLabel(label_text); l.setStyleSheet(style_lbl)
             widget.setStyleSheet(style_val)
-            gl.addWidget(l, r, c)
-            gl.addWidget(widget, r, c+1)
+            # 关键修改：强制左对齐 (Qt.AlignLeft)
+            gl.addWidget(l, r, c, Qt.AlignLeft)
+            gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
-        # 第一行：名称、SN前4、SN规则
+        # 布局排列 (紧凑模式)
+        # Row 0
         add_item(0, 0, "名称:", self.lbl_name)
         add_item(0, 2, "SN前4:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
         
-        # 第二行：规格、69码、箱号规则
+        # Row 1
         add_item(1, 0, "规格:", self.lbl_spec)
         add_item(1, 2, "69码:", self.lbl_code69)
         add_item(1, 4, "箱号规则:", self.lbl_box_rule_name)
         
-        # 第三行：型号(修改处)、整箱数、模板
-        add_item(2, 0, "型号:", self.lbl_model) # 原“当前箱号”位置改为“型号”
+        # Row 2
+        add_item(2, 0, "型号:", self.lbl_model)
         add_item(2, 2, "整箱数:", self.lbl_qty)
         add_item(2, 4, "模板:", self.lbl_tmpl_name)
         
-        # 第四行：颜色
+        # Row 3
         add_item(3, 0, "颜色:", self.lbl_color)
+
+        # 增加一个弹簧列，把前面的内容都挤到左边
+        gl.setColumnStretch(6, 1)
 
         v_details.addLayout(gl)
 
@@ -125,14 +129,20 @@ class PrintPage(QWidget):
 
         v_left.addWidget(grp)
 
-        # 1.4 当前箱号显示 (大红字)
-        v_left.addWidget(QLabel("当前箱号:"))
+        # 1.4 当前箱号标题 (修改：加大字体)
+        v_left.addWidget(QLabel("")) # 占位
+        self.lbl_box_title = QLabel("当前箱号:")
+        # 修改：字体加大到 30px，加粗
+        self.lbl_box_title.setStyleSheet("font-size: 30px; font-weight: bold; color: #333;") 
+        v_left.addWidget(self.lbl_box_title)
+
+        # 1.5 当前箱号数值
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
         self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; padding: 5px 0; font-family: Arial;")
         v_left.addWidget(self.lbl_box_no)
 
-        # 1.5 SN 输入框
+        # 1.6 SN 输入框
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(80) 
@@ -209,18 +219,15 @@ class PrintPage(QWidget):
                 self.table_product.setItem(r,5,QTableWidgetItem(rn))
 
     def on_product_select(self, item):
-        # 防止点击空白行崩溃
         if not item: return
         p = self.table_product.item(item.row(),0).data(Qt.UserRole)
         if not p: return
 
         self.current_product = p
-        
-        # 填充详情数据
         self.lbl_name.setText(str(p.get('name','')))
         self.lbl_sn4.setText(str(p.get('sn4','')))
         self.lbl_spec.setText(str(p.get('spec','')))
-        self.lbl_model.setText(str(p.get('model',''))) # 修复：正确设置型号
+        self.lbl_model.setText(str(p.get('model','')))
         self.lbl_color.setText(str(p.get('color',''))) 
         self.lbl_code69.setText(str(p.get('code69','')))
         self.lbl_qty.setText(str(p.get('qty','')))
@@ -228,7 +235,6 @@ class PrintPage(QWidget):
         tmpl = p.get('template_path','')
         self.lbl_tmpl_name.setText(os.path.basename(tmpl) if tmpl else "未设置")
         
-        # 获取箱规名称
         rid = p.get('rule_id',0)
         rname = "无"
         if rid:
@@ -236,7 +242,6 @@ class PrintPage(QWidget):
              res=c.fetchone(); rname=res[0] if res else "无"
         self.lbl_box_rule_name.setText(rname)
         
-        # 获取SN规则名称
         self.current_sn_rule = None
         sn_rule_name = "无"
         if p.get('sn_rule_id'):
@@ -259,7 +264,6 @@ class PrintPage(QWidget):
             rl = int(self.combo_repair.currentText())
             s, _ = self.rule_engine.generate_box_no(rid, self.current_product, rl)
             self.current_box_no = s
-            # 修复：只更新大箱号，不再尝试更新已被移除的 lbl_box_no_small
             self.lbl_box_no.setText(s)
         except Exception as e:
             self.lbl_box_no.setText("规则错误")
@@ -324,11 +328,24 @@ class PrintPage(QWidget):
         
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
+    # --- 修复：防止删除时闪退 ---
     def del_sn(self):
-        rows = sorted([item.row() for item in self.list_sn.selectedItems()], reverse=True)
-        if not rows: return
-        for row in rows: del self.current_sn_list[row]
-        self.update_sn_list_ui()
+        try:
+            # 获取所有选中项的行号，并按从大到小排序 (防止删除错位)
+            rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedItems()], reverse=True)
+            
+            if not rows: 
+                return # 未选中
+                
+            for row in rows:
+                if 0 <= row < len(self.current_sn_list):
+                    del self.current_sn_list[row]
+            
+            self.update_sn_list_ui()
+            
+        except Exception as e:
+            print(f"Delete Error: {e}")
+            QMessageBox.critical(self, "错误", "删除失败，请重试")
 
     def print_label(self):
         if not self.current_product or not self.current_sn_list: return
