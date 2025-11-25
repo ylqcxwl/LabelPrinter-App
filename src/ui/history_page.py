@@ -72,7 +72,21 @@ class HistoryPage(QWidget):
         cols = ["ID", "箱号", "名称", "规格", "型号", "颜色", "SN", "69码", "时间"]
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        
+        # --- 核心修改：将第1列 ("箱号") 设置为自适应列宽 ---
+        header = self.table.horizontalHeader()
+        # 将第1列设置为内容自适应宽度
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents) 
+        # 其他列保持原来的拉伸模式
+        header.setSectionResizeMode(0, QHeaderView.Stretch) # ID列 (索引0)
+        header.setSectionResizeMode(2, QHeaderView.Stretch) # 名称列 (索引2) 及后续
+        # QHeaderView.Stretch 会自动应用于未单独设置的列，但为确保只有第1列不同，我们显式设置
+        # 如果要让其他列恢复到默认的 QHeaderView.Stretch 行为，可以这么写：
+        for i in range(len(cols)):
+            if i != 1:
+                header.setSectionResizeMode(i, QHeaderView.Stretch)
+        # ----------------------------------------------------
+        
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.hideColumn(0) # 隐藏ID列
@@ -128,6 +142,9 @@ class HistoryPage(QWidget):
                         
                     self.table.setItem(r_idx, c_idx, QTableWidgetItem(text))
                     
+            # 重新调整第1列（箱号）的宽度以适应内容
+            self.table.resizeColumnToContents(1)
+            
         except Exception as e:
             print(f"Load History Error: {e}")
 
