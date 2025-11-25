@@ -49,6 +49,13 @@ class PrintPage(QWidget):
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
+        
+        # --- 核心修改：增加产品列表行高 ---
+        header = self.table_product.horizontalHeader()
+        header.setFixedHeight(45) # 增加表头行高
+        self.table_product.verticalHeader().setDefaultSectionSize(40) # 增加数据行默认行高
+        # -------------------------------
+        
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
