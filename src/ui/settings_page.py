@@ -3,6 +3,9 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLineEdit, QPush
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QTabWidget, QLabel, QFileDialog, QComboBox, QSpinBox)
 from PyQt5.QtCore import Qt
+# --- 新增导入：用于获取打印机信息 ---
+from PyQt5.QtPrintSupport import QPrinterInfo 
+# -----------------------------------
 from src.database import Database
 from src.config import DEFAULT_MAPPING
 import json
@@ -275,6 +278,11 @@ class SettingsPage(QWidget):
     def load_map(self):
         self.table_map.setRowCount(0)
         mapping = self.db.get_setting('field_mapping')
+        if isinstance(mapping, str):
+            try:
+                mapping = json.loads(mapping)
+            except json.JSONDecodeError:
+                mapping = DEFAULT_MAPPING
         if not isinstance(mapping, dict): mapping = DEFAULT_MAPPING
         for k, v in mapping.items():
             self.add_map_row(k, v)
@@ -308,9 +316,18 @@ class SettingsPage(QWidget):
             if c and l and l.text().strip():
                 m[c.currentData()] = l.text().strip()
         self.db.set_setting('field_mapping', json.dumps(m))
+        self.db.conn.commit()
         QMessageBox.information(self, "成功", "映射保存成功")
 
     # ================= 4. 系统维护 =================
+    def get_available_printers(self):
+        """获取系统上所有可用的打印机名称列表。"""
+        # 使用 QPrinterInfo 获取打印机列表
+        printers = [info.printerName() for info in QPrinterInfo.availablePrinters()]
+        # 确保列表中包含一个“使用系统默认”的选项，并放在第一位
+        printers.insert(0, "使用系统默认打印机")
+        return printers
+
     def init_sys_tab(self):
         layout = QVBoxLayout(self.tab_sys)
         
@@ -324,6 +341,21 @@ class SettingsPage(QWidget):
         l1.addWidget(self.path_tmpl_edit)
         l1.addWidget(b1)
         layout.addWidget(g1)
+
+        # --- 新增：默认打印机设置 ---
+        g_printer = QGroupBox("默认打印机")
+        l_printer = QHBoxLayout(g_printer)
+        self.combo_printer = QComboBox()
+        self.combo_printer.addItems(self.get_available_printers())
+        
+        btn_save_printer = QPushButton("保存设置")
+        btn_save_printer.clicked.connect(self.sel_default_printer)
+        
+        l_printer.addWidget(self.combo_printer)
+        l_printer.addWidget(btn_save_printer)
+        l_printer.setStretchFactor(self.combo_printer, 1)
+        layout.addWidget(g_printer)
+        # ----------------------------
         
         # 备份路径
         g2 = QGroupBox("备份目录")
@@ -356,19 +388,45 @@ class SettingsPage(QWidget):
         p2 = self.db.get_setting('backup_path')
         if p2: self.path_bk_edit.setText(p2)
 
+    def load_default_printer(self):
+        """加载默认打印机设置。"""
+        default_printer_name = self.db.get_setting('default_printer')
+        if default_printer_name:
+            index = self.combo_printer.findText(default_printer_name)
+            if index >= 0:
+                self.combo_printer.setCurrentIndex(index)
+            else:
+                # 如果数据库中的打印机不在当前列表中，则默认选中第一个
+                self.combo_printer.setCurrentIndex(0)
+        else:
+            self.combo_printer.setCurrentIndex(0)
+
     def sel_tmpl_path(self):
         p = QFileDialog.getExistingDirectory(self, "选择模板根目录")
         if p:
             self.db.set_setting('template_root', p)
+            self.db.conn.commit()
             self.path_tmpl_edit.setText(p)
+            QMessageBox.information(self, "成功", "模板根目录设置成功！")
 
     def sel_bk_path(self):
         p = QFileDialog.getExistingDirectory(self, "选择备份目录")
         if p:
             self.db.set_setting('backup_path', p)
+            self.db.conn.commit()
             self.path_bk_edit.setText(p)
+            QMessageBox.information(self, "成功", "备份目录设置成功！")
+
+    def sel_default_printer(self):
+        """保存用户选择的默认打印机。"""
+        selected_printer = self.combo_printer.currentText()
+        self.db.set_setting('default_printer', selected_printer)
+        self.db.conn.commit()
+        QMessageBox.information(self, "成功", f"默认打印机已设置为: {selected_printer}")
 
     def do_backup(self):
+        # 确保路径已保存并提交
+        self.db.conn.commit() 
         ok, msg = self.db.backup_db()
         QMessageBox.information(self, "结果", msg)
 
@@ -385,3 +443,4 @@ class SettingsPage(QWidget):
         self.load_sn_rules()
         self.load_map()
         self.load_sys_paths()
+        self.load_default_printer() # --- 新增调用 ---
