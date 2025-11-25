@@ -52,8 +52,8 @@ class PrintPage(QWidget):
         
         # --- 核心修改：增加产品列表行高 ---
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(45) # 增加表头行高
-        self.table_product.verticalHeader().setDefaultSectionSize(40) # 增加数据行默认行高
+        header.setFixedHeight(22) # 增加表头行高
+        self.table_product.verticalHeader().setDefaultSectionSize(20) # 增加数据行默认行高
         # -------------------------------
         
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
