@@ -36,7 +36,7 @@ class PrintPage(QWidget):
 
         # ==================== 左侧：操作区 (占比 7) ====================
         v_left = QVBoxLayout()
-        v_left.setSpacing(0) 
+        v_left.setSpacing(0) # 垂直间距设为 0
 
         # 1.1 搜索框
         self.input_search = QLineEdit()
@@ -45,17 +45,11 @@ class PrintPage(QWidget):
         self.input_search.textChanged.connect(self.filter_products)
         v_left.addWidget(self.input_search)
 
-        # 1.2 产品列表 (修改：列宽优化)
+        # 1.2 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
-        
-        # 关键修改：第一列(名称)拉伸，其余列自适应内容
-        header = self.table_product.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        for i in range(1, 6):
-            header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
-            
+        self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -72,6 +66,7 @@ class PrintPage(QWidget):
         v_details.setContentsMargins(10, 20, 10, 10)
         v_details.setSpacing(0)
         
+        # --- 网格显示详情 ---
         gl = QGridLayout()
         gl.setHorizontalSpacing(15) 
         gl.setVerticalSpacing(10)
@@ -112,12 +107,14 @@ class PrintPage(QWidget):
         v_details.addLayout(gl)
         v_left.addWidget(grp)
 
-        # 1.4 日期与批次
+        # 1.4 日期与批次 (修改：加大3倍)
         h_ctrl = QHBoxLayout()
         h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
-        style_big_ctrl = "font-size: 36px; padding: 5px; min-height: 50px;"
-        style_big_lbl = "font-size: 36px; font-weight: bold; color: #333;"
+        # 定义大字体样式
+        # 字体大小设为 30px (约是原来的3倍)，最小高度设为 35px 以容纳字体
+        style_big_ctrl = "font-size: 30px; padding: 5px; min-height: 35px;"
+        style_big_lbl = "font-size: 30px; font-weight: bold; color: #333;"
 
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
         self.date_prod.setStyleSheet(style_big_ctrl)
@@ -136,9 +133,10 @@ class PrintPage(QWidget):
         
         v_left.addLayout(h_ctrl)
 
-        # 1.5 当前箱号标题
+        # 1.5 当前箱号标题 (修改：加大1倍)
         self.lbl_box_title = QLabel("当前箱号:")
-        self.lbl_box_title.setStyleSheet("font-size: 70px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
+        # 字体从 40px 加大到 60px (接近翻倍)
+        self.lbl_box_title.setStyleSheet("font-size: 60px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         v_left.addWidget(self.lbl_box_title)
 
         # 1.6 当前箱号数值
@@ -151,7 +149,7 @@ class PrintPage(QWidget):
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
-        self.input_sn.setStyleSheet("font-size: 45px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
+        self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
@@ -160,26 +158,24 @@ class PrintPage(QWidget):
         # ==================== 右侧：SN列表区 (占比 3) ====================
         v_right = QVBoxLayout()
         
-        # 2.1 顶部工具栏 (修改：左对齐)
+        # 2.1 顶部工具栏
         h_tools = QHBoxLayout()
         
         self.lbl_daily = QLabel("今日: 0")
-        self.lbl_daily.setStyleSheet("color: green; font-weight: bold; font-size: 24px;")
+        self.lbl_daily.setStyleSheet("color: red; font-weight: bold; font-size: 24px;")
         
         btn_all = QPushButton("全选"); btn_all.clicked.connect(lambda: self.list_sn.selectAll())
         btn_del = QPushButton("删除"); btn_del.clicked.connect(self.del_sn)
         btn_all.setFixedHeight(30); btn_del.setFixedHeight(30)
         
-        # 关键修改：去掉左侧弹簧，使按钮靠左
+        h_tools.addStretch()
         h_tools.addWidget(self.lbl_daily)
-        h_tools.addSpacing(10)
         h_tools.addWidget(btn_all)
         h_tools.addWidget(btn_del)
-        h_tools.addStretch() # 弹簧加在右侧
 
         v_right.addLayout(h_tools)
 
-        # 2.2 列表
+        # 2.2 列表 (字体 23px)
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_sn.setStyleSheet("font-size: 23px;")
@@ -188,7 +184,7 @@ class PrintPage(QWidget):
         content_layout.addLayout(v_right, 3)
         main_layout.addLayout(content_layout)
 
-        # 3. 底部打印按钮
+        # 3. 底部打印按钮 (高度 90px)
         self.btn_print = QPushButton("打印 / 封箱")
         self.btn_print.setMinimumHeight(90)
         self.btn_print.setStyleSheet("background:#e67e22; color:white; font-size:24px; font-weight:bold; border-radius: 5px;")
