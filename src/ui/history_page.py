@@ -23,12 +23,10 @@ class HistoryPage(QWidget):
         # --- 顶部工具栏 ---
         h_layout = QHBoxLayout()
         
-        # 1. 搜索框
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("搜SN / 箱号...")
         self.search_input.returnPressed.connect(self.load)
         
-        # 2. 日期筛选区域 (修改部分)
         self.chk_date = QCheckBox("日期筛选:")
         self.chk_date.stateChanged.connect(self.load)
         
@@ -37,14 +35,11 @@ class HistoryPage(QWidget):
         self.date_start.setDisplayFormat("yyyy-MM-dd")
         self.date_start.dateChanged.connect(self.load)
         
-        lbl_to = QLabel("至")
-        
         self.date_end = QDateEdit(QDate.currentDate())
         self.date_end.setCalendarPopup(True)
         self.date_end.setDisplayFormat("yyyy-MM-dd")
         self.date_end.dateChanged.connect(self.load)
         
-        # 3. 按钮
         btn_search = QPushButton("查询")
         btn_search.clicked.connect(self.load)
         
@@ -55,11 +50,10 @@ class HistoryPage(QWidget):
         btn_del.setStyleSheet("color: red;")
         btn_del.clicked.connect(self.delete_records)
         
-        # 添加到布局
-        h_layout.addWidget(self.search_input, 2) # 搜索框占2份宽
+        h_layout.addWidget(self.search_input, 2)
         h_layout.addWidget(self.chk_date)
         h_layout.addWidget(self.date_start)
-        h_layout.addWidget(lbl_to)
+        h_layout.addWidget(QLabel("至"))
         h_layout.addWidget(self.date_end)
         h_layout.addWidget(btn_search)
         h_layout.addWidget(btn_exp)
@@ -67,15 +61,21 @@ class HistoryPage(QWidget):
         
         layout.addLayout(h_layout)
         
-        # --- 表格区域 ---
+        # --- 表格区域 (修改：列宽优化) ---
         self.table = QTableWidget()
         cols = ["ID", "箱号", "名称", "规格", "型号", "颜色", "SN", "69码", "时间"]
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        
+        # 关键修改：箱号(索引1)自适应，SN(索引6)自适应，其他伸展或默认
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch) # 默认伸展
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents) # 箱号自适应内容
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents) # SN自适应内容
+        
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.table.hideColumn(0) # 隐藏ID列
+        self.table.hideColumn(0) 
         layout.addWidget(self.table)
 
     def refresh_data(self):
@@ -88,7 +88,6 @@ class HistoryPage(QWidget):
             
             cursor = self.db.conn.cursor()
             
-            # 基础查询语句
             sql = """
                 SELECT id, box_no, name, spec, model, color, sn, code69, print_date 
                 FROM records 
@@ -96,36 +95,23 @@ class HistoryPage(QWidget):
             """
             params = [keyword, keyword]
             
-            # --- 修改：日期范围筛选逻辑 ---
             if self.chk_date.isChecked():
                 s_date = self.date_start.date().toString("yyyy-MM-dd")
                 e_date = self.date_end.date().toString("yyyy-MM-dd")
-                
-                # 补充时间，确保包含当天的所有记录 (00:00:00 到 23:59:59)
-                start_time = f"{s_date} 00:00:00"
-                end_time = f"{e_date} 23:59:59"
-                
                 sql += " AND print_date >= ? AND print_date <= ?"
-                params.append(start_time)
-                params.append(end_time)
-            # -----------------------------
+                params.append(f"{s_date} 00:00:00")
+                params.append(f"{e_date} 23:59:59")
             
-            sql += " ORDER BY id DESC LIMIT 1000" # 增加显示数量限制到1000条
+            sql += " ORDER BY id DESC LIMIT 1000"
             
             cursor.execute(sql, params)
-            rows = cursor.fetchall()
-            
-            for r_idx, row in enumerate(rows):
+            for r_idx, row in enumerate(cursor.fetchall()):
                 self.table.insertRow(r_idx)
                 for c_idx, val in enumerate(row):
                     text = str(val) if val is not None else ""
-                    
-                    # 格式化时间显示: 2025-11-22 12:00:00 -> 20251122
                     if c_idx == 8 and len(text) >= 10:
-                        try:
-                            text = text[:10].replace("-", "")
+                        try: text = text[:10].replace("-", "")
                         except: pass
-                        
                     self.table.setItem(r_idx, c_idx, QTableWidgetItem(text))
                     
         except Exception as e:
@@ -136,10 +122,8 @@ class HistoryPage(QWidget):
         if not path: return
         
         try:
-            # 获取当前表格中所有数据 (即筛选后的数据)
             rows = []
             headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
-            
             for r in range(self.table.rowCount()):
                 row_data = []
                 for c in range(self.table.columnCount()):
@@ -147,35 +131,24 @@ class HistoryPage(QWidget):
                     row_data.append(item.text() if item else "")
                 rows.append(row_data)
             
-            if not rows:
-                return QMessageBox.warning(self, "提示", "当前列表无数据可导出")
+            if not rows: return QMessageBox.warning(self, "提示", "无数据")
             
             df = pd.DataFrame(rows, columns=headers)
-            # 移除ID列导出
-            if "ID" in df.columns:
-                df = df.drop(columns=["ID"])
-                
+            if "ID" in df.columns: df = df.drop(columns=["ID"])
             df.to_excel(path, index=False)
-            QMessageBox.information(self, "成功", f"已成功导出 {len(rows)} 条记录！")
+            QMessageBox.information(self, "成功", "导出成功")
             
-        except Exception as e:
-            QMessageBox.critical(self, "错误", str(e))
+        except Exception as e: QMessageBox.critical(self, "错误", str(e))
 
     def delete_records(self):
         try:
-            selected_rows = self.table.selectedIndexes()
-            if not selected_rows:
-                return QMessageBox.warning(self, "提示", "未选中任何记录")
+            rows = set(i.row() for i in self.table.selectedIndexes())
+            if not rows: return QMessageBox.warning(self, "提示", "未选中")
             
-            rows = set(index.row() for index in selected_rows)
             ids = [self.table.item(r, 0).text() for r in rows]
-            
-            if QMessageBox.question(self, "确认", f"确定删除 {len(ids)} 条记录?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
-                placeholders = ",".join("?" * len(ids))
-                sql = f"DELETE FROM records WHERE id IN ({placeholders})"
-                self.db.cursor.execute(sql, ids)
+            if QMessageBox.question(self, "确认", f"删 {len(ids)} 条?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                p = ",".join("?" * len(ids))
+                self.db.cursor.execute(f"DELETE FROM records WHERE id IN ({p})", ids)
                 self.db.conn.commit()
                 self.load()
-                
-        except Exception as e:
-            QMessageBox.critical(self, "错误", str(e))
+        except Exception as e: QMessageBox.critical(self, "错误", str(e))
