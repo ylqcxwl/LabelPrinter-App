@@ -65,6 +65,9 @@ class PrintPage(QWidget):
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
 
+        #  增加空白区域 在产品列表和产品详情之间
+        v_left.addSpacing(15)
+
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-bottom: 5px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
