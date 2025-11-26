@@ -52,8 +52,8 @@ class PrintPage(QWidget):
         
         # --- 核心修改：增加产品列表行高 ---
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(30) # 增加表头行高
-        self.table_product.verticalHeader().setDefaultSectionSize(30) # 增加数据行默认行高
+        header.setFixedHeight(25) # 增加表头行高
+        self.table_product.verticalHeader().setDefaultSectionSize(25) # 增加数据行默认行高
         # -------------------------------
         
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -156,7 +156,7 @@ class PrintPage(QWidget):
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
-        self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
+        self.input_sn.setStyleSheet("font-size: 60px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
