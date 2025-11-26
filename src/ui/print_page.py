@@ -61,7 +61,7 @@ class PrintPage(QWidget):
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table_product.setMaximumHeight(150)
-        self.table_product.setStyleSheet("margin-bottom: 1px;") 
+        self.table_product.setStyleSheet("margin-bottom: 0px;") 
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
 
