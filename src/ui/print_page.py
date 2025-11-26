@@ -50,12 +50,13 @@ class PrintPage(QWidget):
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
-        # 列表行高设置
+        # --- 核心修改：增加产品列表行高 ---
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(45) 
-        header.setSectionResizeMode(QHeaderView.Stretch) 
-        self.table_product.verticalHeader().setDefaultSectionSize(40) 
-
+        header.setFixedHeight(30) # 增加表头行高
+        self.table_product.verticalHeader().setDefaultSectionSize(30) # 增加数据行默认行高
+        # -------------------------------
+        
+        self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -113,12 +114,14 @@ class PrintPage(QWidget):
         v_details.addLayout(gl)
         v_left.addWidget(grp)
 
-        # 1.4 日期与批次
+        # 1.4 日期与批次 (修改：加大3倍)
         h_ctrl = QHBoxLayout()
         h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
-        style_big_ctrl = "font-size: 36px; padding: 5px; min-height: 50px;"
-        style_big_lbl = "font-size: 36px; font-weight: bold; color: #333;"
+        # 定义大字体样式
+        # 字体大小设为 30px (约是原来的3倍)，最小高度设为 35px 以容纳字体
+        style_big_ctrl = "font-size: 30px; padding: 5px; min-height: 30px;"
+        style_big_lbl = "font-size: 30px; font-weight: bold; color: #333;"
 
         self.date_prod = QDateEdit(QDate.currentDate()); self.date_prod.setCalendarPopup(True)
         self.date_prod.setStyleSheet(style_big_ctrl)
@@ -137,9 +140,10 @@ class PrintPage(QWidget):
         
         v_left.addLayout(h_ctrl)
 
-        # 1.5 当前箱号标题
+        # 1.5 当前箱号标题 (修改：加大1倍)
         self.lbl_box_title = QLabel("当前箱号:")
-        self.lbl_box_title.setStyleSheet("font-size: 70px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
+        # 字体从 40px 加大到 60px (接近翻倍)
+        self.lbl_box_title.setStyleSheet("font-size: 55px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         v_left.addWidget(self.lbl_box_title)
 
         # 1.6 当前箱号数值
@@ -152,7 +156,7 @@ class PrintPage(QWidget):
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
-        self.input_sn.setStyleSheet("font-size: 45px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
+        self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
@@ -178,7 +182,7 @@ class PrintPage(QWidget):
 
         v_right.addLayout(h_tools)
 
-        # 2.2 列表
+        # 2.2 列表 (字体 23px)
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_sn.setStyleSheet("font-size: 23px;")
@@ -187,7 +191,7 @@ class PrintPage(QWidget):
         content_layout.addLayout(v_right, 3)
         main_layout.addLayout(content_layout)
 
-        # 3. 底部打印按钮
+        # 3. 底部打印按钮 (高度 90px)
         self.btn_print = QPushButton("打印 / 封箱")
         self.btn_print.setMinimumHeight(90)
         self.btn_print.setStyleSheet("background:#e67e22; color:white; font-size:24px; font-weight:bold; border-radius: 5px;")
@@ -355,21 +359,7 @@ class PrintPage(QWidget):
         dat = {}
         for k,v in m.items(): 
             if k in src: dat[v] = src[k]
-            
-        # --- 修改：补齐空值逻辑 ---
-        # 获取当前产品的整箱数量，默认为 0
-        full_box_qty = int(p.get('qty', 0)) 
-        
-        # 循环 1 到 full_box_qty (例如 1 到 100)
-        for i in range(full_box_qty):
-            key = str(i+1) # Bartender 变量名通常是 "1", "2" ...
-            if i < len(self.current_sn_list):
-                # 如果有扫描的 SN，填入 SN
-                dat[key] = self.current_sn_list[i][0] 
-            else:
-                # 如果不足，填入空字符串，覆盖模板中的示例文本
-                dat[key] = "" 
-        # -------------------------
+        for i, (sn,_) in enumerate(self.current_sn_list): dat[str(i+1)] = sn
         
         root = self.db.get_setting('template_root')
         tp = p.get('template_path','')
