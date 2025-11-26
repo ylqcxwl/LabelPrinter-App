@@ -52,7 +52,7 @@ class PrintPage(QWidget):
         
         # --- 核心修改：增加产品列表行高 ---
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(35) # 增加表头行高
+        header.setFixedHeight(25) # 增加表头行高
         self.table_product.verticalHeader().setDefaultSectionSize(25) # 增加数据行默认行高
         # -------------------------------
         
@@ -61,7 +61,7 @@ class PrintPage(QWidget):
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table_product.setMaximumHeight(150)
-        self.table_product.setStyleSheet("margin-bottom: 10px;") 
+        self.table_product.setStyleSheet("margin-bottom: 1px;") 
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
 
