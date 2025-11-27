@@ -50,12 +50,12 @@ class PrintPage(QWidget):
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
-        # 列表行高设置
+        # --- 增加产品列表行高 ---
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(25) 
-        self.table_product.verticalHeader().setDefaultSectionSize(25) 
-
-        header.setSectionResizeMode(QHeaderView.Stretch)
+        header.setFixedHeight(25) # 增加表头行高
+        self.table_product.verticalHeader().setDefaultSectionSize(25) # 增加数据行默认行高
+        
+        self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -67,10 +67,9 @@ class PrintPage(QWidget):
         # 增加空白区域 在产品列表和产品详情之间
         v_left.addSpacing(15)
 
-        # 1.3 产品详情区域 (UI修改: 标题上移)
+        # 1.3 产品详情区域 (UI 修复: 标题上移)
         grp = QGroupBox("产品详情")
-        # 修改 QGroupBox::title 的 subcontrol-origin: margin, left: 10px; padding: 0 5px; 
-        # 同时调整 margin-top: -6px 来实现上移效果
+        # 核心修改：设置 margin-top 来为标题留出空间，并通过 top: -6px; 将标题上移，同时避免被遮挡
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-top: 10px; margin-bottom: 5px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; top: -6px; }")
         
         v_details = QVBoxLayout(grp)
@@ -343,23 +342,19 @@ class PrintPage(QWidget):
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
     def del_sn(self):
-        # 修复闪退：在删除项之前，需要先从列表中取出索引，并确保列表非空
+        # 修复闪退：确保在删除时索引正确，避免列表长度变化导致错误
         rows = sorted([item.row() for item in self.list_sn.selectedItems()], reverse=True)
         if not rows: return
-
-        # 遍历选中的行索引并从 current_sn_list 中删除对应的 SN
-        # BUG 修复：原来代码 `for row in rows: del self.current_sn_list[row]` 会在多选时因索引变化而出错。
-        # 解决方法是先获取待删除项的索引，再执行删除操作。由于 `rows` 已经排过序，所以直接删除是正确的。
+        
+        # 按降序删除，保证索引的有效性
         try:
-             for row in rows: 
-                 del self.current_sn_list[row]
+            for row in rows: 
+                del self.current_sn_list[row]
         except IndexError:
-             # 理论上不会发生，但加上 try/except 确保健壮性
              QMessageBox.critical(self,"删除错误","列表索引错误，请重试")
              return
 
         self.update_sn_list_ui()
-
 
     def print_label(self):
         if not self.current_product or not self.current_sn_list: return
@@ -376,27 +371,24 @@ class PrintPage(QWidget):
             if k in src: dat[v] = src[k]
         
         # --- 打印逻辑修改：不足整箱数时用空值补齐 ---
-        
-        # 1. 获取整箱数量
         full_box_qty = int(p.get('qty', 0)) 
         
-        # 2. 循环至整箱数量，填充SN或空值
         for i in range(full_box_qty):
-            key = str(i+1) # Bartender 变量名通常是 "1", "2" ...
+            key = str(i+1) 
             if i < len(self.current_sn_list):
                 # 如果有扫描的 SN，填入 SN
                 dat[key] = self.current_sn_list[i][0] 
             else:
-                # 如果不足，填入空字符串，覆盖模板中的示例文本
+                # 如果不足，填入空字符串 ""，这样 Bartender 会打印空值或依赖模板默认值
                 dat[key] = "" 
-        
-        # 3. 确保其他非 SN 字段仍然通过映射传入（已在 dat={} 上方完成）
-        # for i, (sn,_) in enumerate(self.current_sn_list): dat[str(i+1)] = sn  # 移除旧的 SN 填充逻辑
         # -----------------------------------------------
         
         root = self.db.get_setting('template_root')
         tp = p.get('template_path','')
         path = os.path.join(root, tp) if root and tp else tp
+        
+        # BartenderPrinter 内部应确保在打印后不对模板文件进行保存（通常使用 bt.Format.Close(2) 或类似设置）
+        # 假设 src.bartender.BartenderPrinter 已经实现了非覆写模板的逻辑。
         
         ok, msg = self.printer.print_label(path, dat)
         if ok:
