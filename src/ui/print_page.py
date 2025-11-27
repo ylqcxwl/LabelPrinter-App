@@ -70,23 +70,7 @@ class PrintPage(QWidget):
 
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
-        # 核心修改：调整 title 的垂直位置，上移 6px
-        grp.setStyleSheet("""
-            QGroupBox { 
-                font-weight: bold; 
-                font-size: 16px; 
-                border: 1px solid #ccc; 
-                margin-bottom: 5px;
-                margin-top: 6px; /* 增加顶部 margin 以容纳上移的 title */
-            } 
-            QGroupBox::title { 
-                subcontrol-origin: margin; 
-                subcontrol-position: top left;
-                left: 10px; 
-                padding: 0 5px; 
-                margin-top: -6px; /* 标题上移 6px */
-            }
-        """)
+        grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-bottom: 5px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
         
         v_details = QVBoxLayout(grp)
         v_details.setContentsMargins(10, 20, 10, 10)
@@ -357,12 +341,9 @@ class PrintPage(QWidget):
         self.current_sn_list.append((sn, datetime.datetime.now()))
         self.update_sn_list_ui()
         
-        # 即使数量足够，也应该等待用户按下打印按钮或在打印逻辑中检查数量。
-        # 这里保留原有逻辑，如果数量足够则自动打印。
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
     def del_sn(self):
-        # 解决闪退：确保对 self.current_sn_list 的修改发生在获取所有要删除的索引之后
         rows = sorted([item.row() for item in self.list_sn.selectedItems()], reverse=True)
         if not rows: return
         for row in rows: del self.current_sn_list[row]
@@ -374,11 +355,6 @@ class PrintPage(QWidget):
         m = self.db.get_setting('field_mapping')
         if not isinstance(m, dict): m = DEFAULT_MAPPING
         
-        # 获取整箱数，如果获取不到或无法转换，则使用当前 SN 列表长度。
-        max_qty = p.get('qty', len(self.current_sn_list)) 
-        try: max_qty = int(max_qty)
-        except: max_qty = len(self.current_sn_list)
-
         src = {"name":p.get('name'), "spec":p.get('spec'), "model":p.get('model'), "color":p.get('color'),
                "sn4":p.get('sn4'), "sku":p.get('sku'), "code69":p.get('code69'), "qty":len(self.current_sn_list),
                "weight":p.get('weight'), "box_no":self.current_box_no, "prod_date":self.date_prod.text()}
@@ -386,16 +362,7 @@ class PrintPage(QWidget):
         dat = {}
         for k,v in m.items(): 
             if k in src: dat[v] = src[k]
-            
-        # --- 核心修改：补齐 SN 数据（即使不足整箱数） ---
-        for i in range(1, max_qty + 1):
-            if i-1 < len(self.current_sn_list):
-                sn = self.current_sn_list[i-1][0]
-            else:
-                sn = "" # 用空值补齐
-                
-            dat[str(i)] = sn
-        # ----------------------------------------------
+        for i, (sn,_) in enumerate(self.current_sn_list): dat[str(i+1)] = sn
         
         root = self.db.get_setting('template_root')
         tp = p.get('template_path','')
@@ -404,10 +371,9 @@ class PrintPage(QWidget):
         ok, msg = self.printer.print_label(path, dat)
         if ok:
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # 注意：数据库只记录实际扫描的 SN
-            for sn,_ in self.current_sn_list: 
+            for sn,_ in self.current_sn_list:
                 self.db.cursor.execute("INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date) VALUES (?,?,?,?,?,?,?,?,?)",
-                                     (self.current_box_no, 0, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
+                                       (self.current_box_no, 0, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
             self.db.conn.commit()
             self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
             
