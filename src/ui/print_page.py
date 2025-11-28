@@ -66,7 +66,7 @@ class PrintPage(QWidget):
         v_left.addWidget(self.table_product)
 
         #  增加空白区域 在产品列表和产品详情之间
-        v_left.addSpacing(15)
+        v_left.addSpacing(7)
 
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
