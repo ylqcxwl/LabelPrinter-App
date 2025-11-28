@@ -70,7 +70,23 @@ class PrintPage(QWidget):
 
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
-        grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 16px; border: 1px solid #ccc; margin-bottom: 5px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }")
+        # --- 修改点1：UI调整，标题上移6px，并增加 margin-top 防止遮挡 ---
+        # margin-top: 15px (给标题腾位置), top: -6px (标题文字上移)
+        grp.setStyleSheet("""
+            QGroupBox { 
+                font-weight: bold; 
+                font-size: 16px; 
+                border: 1px solid #ccc; 
+                margin-bottom: 5px; 
+                margin-top: 15px; 
+            } 
+            QGroupBox::title { 
+                subcontrol-origin: margin; 
+                left: 10px; 
+                padding: 0 5px; 
+                top: -6px; 
+            }
+        """)
         
         v_details = QVBoxLayout(grp)
         v_details.setContentsMargins(10, 20, 10, 10)
@@ -122,7 +138,6 @@ class PrintPage(QWidget):
         h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
         # 定义大字体样式
-        # 字体大小设为 30px (约是原来的3倍)，最小高度设为 35px 以容纳字体
         style_big_ctrl = "font-size: 30px; padding: 5px; min-height: 30px;"
         style_big_lbl = "font-size: 30px; font-weight: bold; color: #333;"
 
@@ -145,8 +160,7 @@ class PrintPage(QWidget):
 
         # 1.5 当前箱号标题 (修改：加大1倍)
         self.lbl_box_title = QLabel("当前箱号:")
-        # 字体从 40px 加大到 60px (接近翻倍)
-        self.lbl_box_title.setStyleSheet("font-size: 55px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
+        self.lbl_box_title.setStyleSheet("font-size: 60px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         v_left.addWidget(self.lbl_box_title)
 
         # 1.6 当前箱号数值
@@ -344,11 +358,22 @@ class PrintPage(QWidget):
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
     def del_sn(self):
-        rows = sorted([item.row() for item in self.list_sn.selectedItems()], reverse=True)
-        if not rows: return
-        for row in rows: del self.current_sn_list[row]
-        self.update_sn_list_ui()
-
+        # --- 修改点2：修复闪退问题 ---
+        try:
+            # 获取选中项的行索引，并降序排列
+            rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedItems()], reverse=True)
+            if not rows: return
+            
+            for row in rows:
+                # 增加边界检查，确保索引有效
+                if 0 <= row < len(self.current_sn_list):
+                    del self.current_sn_list[row]
+            
+            self.update_sn_list_ui()
+        except Exception as e:
+            print(f"Delete Error: {e}")
+            # 可选：不弹窗报错，仅在控制台输出
+    
     def print_label(self):
         if not self.current_product or not self.current_sn_list: return
         p = self.current_product
@@ -362,7 +387,22 @@ class PrintPage(QWidget):
         dat = {}
         for k,v in m.items(): 
             if k in src: dat[v] = src[k]
-        for i, (sn,_) in enumerate(self.current_sn_list): dat[str(i+1)] = sn
+        
+        # --- 修改点3 & 4：空值补齐且不覆写模板 ---
+        # 1. 获取整箱数量，默认为0
+        full_box_qty = int(p.get('qty', 0))
+        
+        # 2. 循环遍历 1 到 整箱数
+        for i in range(full_box_qty):
+            key = str(i+1) # Bartender 变量名通常为 "1", "2" 等
+            if i < len(self.current_sn_list):
+                # 有扫描数据，填入SN
+                dat[key] = self.current_sn_list[i][0]
+            else:
+                # 无扫描数据，填入空字符串
+                # 这样 Bartender 会打印空白，但不会修改模板文件本身（因为不保存）
+                dat[key] = ""
+        # ----------------------------------------
         
         root = self.db.get_setting('template_root')
         tp = p.get('template_path','')
