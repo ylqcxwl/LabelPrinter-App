@@ -65,27 +65,28 @@ class PrintPage(QWidget):
         v_left.addWidget(self.table_product)
 
         # 增加空白区域
-        v_left.addSpacing(7)
+        v_left.addSpacing(15)
 
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
+        # --- 修改 1: 调整 QGroupBox 样式，确保 "产品详情" 四字完整显示 ---
         grp.setStyleSheet("""
             QGroupBox { 
                 font-weight: bold; 
                 font-size: 16px; 
                 border: 1px solid #ccc; 
                 margin-bottom: 5px; 
-                margin-top: 15px; 
+                margin-top: 20px; /* 增加顶部边距以容纳标题 */
             } 
             QGroupBox::title { 
                 subcontrol-origin: margin; 
                 left: 10px; 
                 padding: 0 5px; 
-                top: -6px; 
+                /* 移除 top: -6px; */
             }
         """)
         
-        # 这里使用水平布局，左边是详情，右边是状态大字
+        # 详情组的布局
         h_grp_layout = QHBoxLayout(grp)
         h_grp_layout.setContentsMargins(10, 20, 10, 10)
         
@@ -132,15 +133,11 @@ class PrintPage(QWidget):
         gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
         v_details_left.addLayout(gl)
         
-        h_grp_layout.addLayout(v_details_left, 7) # 详情占 70%
-
-        # --- 新增：右侧状态显示区域 (红色框选部分) ---
-        self.lbl_print_status = QLabel("未打印")
-        self.lbl_print_status.setAlignment(Qt.AlignCenter)
-        # 初始样式：红色大字
-        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9;")
-        h_grp_layout.addWidget(self.lbl_print_status, 3) # 状态占 30%
-        # ----------------------------------------
+        # 产品详情 GroupBox 只包含详情信息
+        h_grp_layout.addLayout(v_details_left, 10) 
+        
+        # 移除原代码中的 self.lbl_print_status，因为它将被移动
+        # self.lbl_print_status = QLabel("未打印") ... h_grp_layout.addWidget(self.lbl_print_status, 3) 
         
         v_left.addWidget(grp)
 
@@ -168,11 +165,25 @@ class PrintPage(QWidget):
         
         v_left.addLayout(h_ctrl)
 
+        # --- 修改 2: 打印状态标签移出 QGroupBox，并放置在日期/批次控件右方、箱号标题上方 ---
+        self.lbl_print_status = QLabel("未打印")
+        self.lbl_print_status.setAlignment(Qt.AlignCenter)
+        
+        # 初始样式：红色大字
+        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
+        
+        # 创建一个结合了 "当前箱号" 标题和 "打印状态" 标签的新水平布局，实现图片中的对齐效果
+        h_box_and_status = QHBoxLayout()
         # 1.5 当前箱号标题
         self.lbl_box_title = QLabel("当前箱号:")
         self.lbl_box_title.setStyleSheet("font-size: 60px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
-        v_left.addWidget(self.lbl_box_title)
+        
+        h_box_and_status.addWidget(self.lbl_box_title, 7)
+        h_box_and_status.addWidget(self.lbl_print_status, 3) 
 
+        # 将这个组合布局添加到 v_left
+        v_left.addLayout(h_box_and_status)
+        
         # 1.6 当前箱号数值
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
@@ -297,8 +308,9 @@ class PrintPage(QWidget):
         self.update_box_preview(); self.update_daily(); self.input_sn.setFocus()
         
         # 重置状态标签为未打印
+        # 样式已修改为包含 padding 和 min-height，以适应新的更大区域
         self.lbl_print_status.setText("未打印")
-        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9;")
+        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
 
     def update_box_preview(self):
         if not self.current_product: return
@@ -372,7 +384,7 @@ class PrintPage(QWidget):
         
         # 只要开始扫描新的，状态就变回“未打印”
         self.lbl_print_status.setText("未打印")
-        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9;")
+        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
         
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
@@ -425,13 +437,13 @@ class PrintPage(QWidget):
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             for sn,_ in self.current_sn_list:
                 self.db.cursor.execute("INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date) VALUES (?,?,?,?,?,?,?,?,?)",
-                                       (self.current_box_no, 0, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
+                                     (self.current_box_no, 0, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
             self.db.conn.commit()
             self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
             
             # 2. 更新UI状态：显示“打印完成” (绿色)
             self.lbl_print_status.setText("打印完成")
-            self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: green; border: 2px solid #ddd; border-radius: 8px; background-color: #e8f8f5;")
+            self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: green; border: 2px solid #ddd; border-radius: 8px; background-color: #e8f8f5; padding: 10px; min-height: 100px;")
             
             # 3. 清空列表并刷新，但不弹窗
             self.current_sn_list=[]; 
