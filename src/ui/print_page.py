@@ -50,12 +50,11 @@ class PrintPage(QWidget):
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
-        # --- 核心修改：增加产品列表行高 ---
+        # 列表行高设置
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(25) # 增加表头行高
-        self.table_product.verticalHeader().setDefaultSectionSize(25) # 增加数据行默认行高
-        # -------------------------------
-        
+        header.setFixedHeight(25) 
+        self.table_product.verticalHeader().setDefaultSectionSize(25) 
+
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -65,13 +64,11 @@ class PrintPage(QWidget):
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
 
-        #  增加空白区域 在产品列表和产品详情之间
+        # 增加空白区域
         v_left.addSpacing(7)
 
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
-        # --- 修改点1：UI调整，标题上移6px，并增加 margin-top 防止遮挡 ---
-        # margin-top: 15px (给标题腾位置), top: -6px (标题文字上移)
         grp.setStyleSheet("""
             QGroupBox { 
                 font-weight: bold; 
@@ -88,11 +85,14 @@ class PrintPage(QWidget):
             }
         """)
         
-        v_details = QVBoxLayout(grp)
-        v_details.setContentsMargins(10, 20, 10, 10)
-        v_details.setSpacing(0)
+        # 这里使用水平布局，左边是详情，右边是状态大字
+        h_grp_layout = QHBoxLayout(grp)
+        h_grp_layout.setContentsMargins(10, 20, 10, 10)
         
-        # --- 网格显示详情 ---
+        # 左边详情部分
+        v_details_left = QVBoxLayout()
+        v_details_left.setSpacing(0)
+        
         gl = QGridLayout()
         gl.setHorizontalSpacing(15) 
         gl.setVerticalSpacing(10)
@@ -130,14 +130,24 @@ class PrintPage(QWidget):
         add_item(3, 2, "整箱数:", self.lbl_qty)
 
         gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
-        v_details.addLayout(gl)
+        v_details_left.addLayout(gl)
+        
+        h_grp_layout.addLayout(v_details_left, 7) # 详情占 70%
+
+        # --- 新增：右侧状态显示区域 (红色框选部分) ---
+        self.lbl_print_status = QLabel("未打印")
+        self.lbl_print_status.setAlignment(Qt.AlignCenter)
+        # 初始样式：红色大字
+        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9;")
+        h_grp_layout.addWidget(self.lbl_print_status, 3) # 状态占 30%
+        # ----------------------------------------
+        
         v_left.addWidget(grp)
 
-        # 1.4 日期与批次 (修改：加大3倍)
+        # 1.4 日期与批次
         h_ctrl = QHBoxLayout()
         h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
-        # 定义大字体样式
         style_big_ctrl = "font-size: 30px; padding: 5px; min-height: 30px;"
         style_big_lbl = "font-size: 30px; font-weight: bold; color: #333;"
 
@@ -158,7 +168,7 @@ class PrintPage(QWidget):
         
         v_left.addLayout(h_ctrl)
 
-        # 1.5 当前箱号标题 (修改：加大1倍)
+        # 1.5 当前箱号标题
         self.lbl_box_title = QLabel("当前箱号:")
         self.lbl_box_title.setStyleSheet("font-size: 60px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         v_left.addWidget(self.lbl_box_title)
@@ -199,7 +209,7 @@ class PrintPage(QWidget):
 
         v_right.addLayout(h_tools)
 
-        # 2.2 列表 (字体 23px)
+        # 2.2 列表
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_sn.setStyleSheet("font-size: 23px;")
@@ -208,7 +218,7 @@ class PrintPage(QWidget):
         content_layout.addLayout(v_right, 3)
         main_layout.addLayout(content_layout)
 
-        # 3. 底部打印按钮 (高度 90px)
+        # 3. 底部打印按钮
         self.btn_print = QPushButton("打印 / 封箱")
         self.btn_print.setMinimumHeight(90)
         self.btn_print.setStyleSheet("background:#e67e22; color:white; font-size:24px; font-weight:bold; border-radius: 5px;")
@@ -281,9 +291,14 @@ class PrintPage(QWidget):
                  self.current_sn_rule={'fmt':res[1], 'len':res[2]}
         self.lbl_sn_rule.setText(sn_rule_name)
 
+        # 重置列表和状态
         self.current_sn_list=[]; 
         self.update_sn_list_ui() 
         self.update_box_preview(); self.update_daily(); self.input_sn.setFocus()
+        
+        # 重置状态标签为未打印
+        self.lbl_print_status.setText("未打印")
+        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9;")
 
     def update_box_preview(self):
         if not self.current_product: return
@@ -355,25 +370,25 @@ class PrintPage(QWidget):
         self.current_sn_list.append((sn, datetime.datetime.now()))
         self.update_sn_list_ui()
         
+        # 只要开始扫描新的，状态就变回“未打印”
+        self.lbl_print_status.setText("未打印")
+        self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9;")
+        
         if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
 
     def del_sn(self):
-        # --- 修改点2：修复闪退问题 ---
         try:
-            # 获取选中项的行索引，并降序排列
             rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedItems()], reverse=True)
             if not rows: return
             
             for row in rows:
-                # 增加边界检查，确保索引有效
                 if 0 <= row < len(self.current_sn_list):
                     del self.current_sn_list[row]
             
             self.update_sn_list_ui()
         except Exception as e:
             print(f"Delete Error: {e}")
-            # 可选：不弹窗报错，仅在控制台输出
-    
+
     def print_label(self):
         if not self.current_product or not self.current_sn_list: return
         p = self.current_product
@@ -388,28 +403,25 @@ class PrintPage(QWidget):
         for k,v in m.items(): 
             if k in src: dat[v] = src[k]
         
-        # --- 修改点3 & 4：空值补齐且不覆写模板 ---
-        # 1. 获取整箱数量，默认为0
+        # --- 打印逻辑：空值补齐 ---
         full_box_qty = int(p.get('qty', 0))
-        
-        # 2. 循环遍历 1 到 整箱数
         for i in range(full_box_qty):
-            key = str(i+1) # Bartender 变量名通常为 "1", "2" 等
+            key = str(i+1)
             if i < len(self.current_sn_list):
-                # 有扫描数据，填入SN
                 dat[key] = self.current_sn_list[i][0]
             else:
-                # 无扫描数据，填入空字符串
-                # 这样 Bartender 会打印空白，但不会修改模板文件本身（因为不保存）
-                dat[key] = ""
-        # ----------------------------------------
+                # 传入空字符串，这样打印出来是空白，而不是模板默认值
+                dat[key] = "" 
         
         root = self.db.get_setting('template_root')
         tp = p.get('template_path','')
         path = os.path.join(root, tp) if root and tp else tp
         
+        # 调用底层打印
         ok, msg = self.printer.print_label(path, dat)
+        
         if ok:
+            # 1. 更新数据库记录
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             for sn,_ in self.current_sn_list:
                 self.db.cursor.execute("INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -417,6 +429,16 @@ class PrintPage(QWidget):
             self.db.conn.commit()
             self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
             
-            QMessageBox.information(self,"好","打印成功"); 
-            self.current_sn_list=[]; self.update_sn_list_ui(); self.update_box_preview(); self.update_daily()
-        else: QMessageBox.critical(self,"失败", msg)
+            # 2. 更新UI状态：显示“打印完成” (绿色)
+            self.lbl_print_status.setText("打印完成")
+            self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: green; border: 2px solid #ddd; border-radius: 8px; background-color: #e8f8f5;")
+            
+            # 3. 清空列表并刷新，但不弹窗
+            self.current_sn_list=[]; 
+            self.update_sn_list_ui()
+            self.update_box_preview()
+            self.update_daily()
+            
+            # 移除原来的 QMessageBox.information 弹窗
+        else: 
+            QMessageBox.critical(self,"失败", msg)
