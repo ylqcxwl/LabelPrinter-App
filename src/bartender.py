@@ -13,7 +13,7 @@ class BartenderPrinter:
             print(f"Bartender Init Error: {e}")
 
     def print_label(self, template_path, data_map, printer_name=None):
-        # 检查 Bartender 实例，如果丢失尝试重连
+        # 检查 Bartender 实例
         if not self.bt_app:
             try:
                 self.bt_app = win32com.client.Dispatch("BarTender.Application")
@@ -22,47 +22,43 @@ class BartenderPrinter:
                 return False, "Bartender未安装或无法启动"
 
         if not os.path.exists(template_path):
-            return False, "找不到模板文件"
+            return False, f"找不到模板文件: {template_path}"
 
+        bt_format = None
         try:
-            # 打开格式文件
-            # Open(FileName, CloseAfterPrint, Password)
-            bt_format = self.bt_app.Formats.Open(template_path, False, "")
+            # --- 修复：防止模板被覆盖 ---
+            # Open(FileName, ReadOnly, Password)
+            # 将 ReadOnly 设置为 True，确保绝对不会保存对模板的修改
+            bt_format = self.bt_app.Formats.Open(template_path, True, "")
             
-            # --- 新增：设置默认打印机逻辑 ---
-            # 1. 从数据库获取设置
+            # --- 设置默认打印机 ---
             target_printer = self.db.get_setting('default_printer')
-            
-            # 2. 如果设置了具体打印机（且不是占位符），则应用设置
             if target_printer and target_printer != "使用系统默认打印机":
                 bt_format.Printer = target_printer
-            # -----------------------------
 
-            # 设置数据源
-            # data_map: {"mingcheng": "Product A", "SN4": "1234", "1": "SN001", "2": "SN002"...}
+            # --- 设置数据源 ---
+            # data_map 包含: name, spec, code69, 1, 2, 3...
             for key, value in data_map.items():
                 try:
+                    # 尝试设置命名数据源
                     bt_format.SetNamedSubStringValue(key, str(value))
                 except:
-                    pass # 忽略模板中不存在的字段
+                    pass 
 
             # 打印
             # PrintOut(ShowStatusWindow, ShowDialog)
-            # 返回值通常为 0 (成功) 或其他错误码，但在 win32com 中可能表现不同，这里主要捕获异常
             bt_format.PrintOut(False, False) 
             
-            # 不保存模板修改并关闭
-            # Close(SaveOptions): 2 = btDoNotSaveChanges
+            # 关闭不保存 (CloseOptions: 2 = btDoNotSaveChanges)
+            # 虽然已经是 ReadOnly 打开，但再次强制不保存
             bt_format.Close(2) 
             
             return True, "打印成功"
         except Exception as e:
-            # 尝试关闭模板以防锁死，忽略错误
+            # 异常处理：尝试关闭模板防止锁死
             try:
-                if 'bt_format' in locals():
-                    bt_format.Close(2)
-            except:
-                pass
+                if bt_format: bt_format.Close(2)
+            except: pass
             return False, f"打印出错: {str(e)}"
 
     def quit(self):
