@@ -80,20 +80,20 @@ class PrintPage(QWidget):
 
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
-        # 修正：调整 QGroupBox 样式，恢复标题上移效果 (top: -6px)
+        # --- 修改 1: 调整 QGroupBox 样式，确保 "产品详情" 四字完整显示 ---
         grp.setStyleSheet("""
             QGroupBox { 
                 font-weight: bold; 
                 font-size: 16px; 
                 border: 1px solid #ccc; 
                 margin-bottom: 5px; 
-                margin-top: 15px; /* 恢复更小的边距 */
+                margin-top: 20px; /* 增加顶部边距以容纳标题 */
             } 
             QGroupBox::title { 
                 subcontrol-origin: margin; 
                 left: 10px; 
                 padding: 0 5px; 
-                top: -6px; /* 恢复标题上移 */
+                /* 移除 top: -6px; */
             }
         """)
         
@@ -146,6 +146,9 @@ class PrintPage(QWidget):
         
         # 产品详情 GroupBox 只包含详情信息
         h_grp_layout.addLayout(v_details_left, 10) 
+        
+        # 移除原代码中的 self.lbl_print_status，因为它将被移动
+        # self.lbl_print_status = QLabel("未打印") ... h_grp_layout.addWidget(self.lbl_print_status, 3) 
         
         v_left.addWidget(grp)
 
