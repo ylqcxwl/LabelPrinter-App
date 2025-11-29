@@ -61,10 +61,10 @@ class PrintPage(QWidget):
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
-        # 修正：产品列表行高调整至 45/40
+        # 修正：产品列表行高调整至
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(45) # 表头高度 45
-        self.table_product.verticalHeader().setDefaultSectionSize(40) # 数据行高度 40
+        header.setFixedHeight(25) # 表头高度 25
+        self.table_product.verticalHeader().setDefaultSectionSize(25) # 数据行高度 25
 
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -202,7 +202,7 @@ class PrintPage(QWidget):
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
         # 修正：SN 输入框字体大小调整至 45px
-        self.input_sn.setStyleSheet("font-size: 45px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
+        self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
