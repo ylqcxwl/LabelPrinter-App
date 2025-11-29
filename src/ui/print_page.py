@@ -2,11 +2,17 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdi
                              QListWidget, QPushButton, QComboBox, QDateEdit, QGroupBox,
                              QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
                              QAbstractItemView, QGridLayout)
-from PyQt5.QtCore import QDate, Qt
+from PyQt5.QtCore import QDate, Qt, QTimer # 修正：添加 QTimer
 from src.database import Database
 from src.box_rules import BoxRuleEngine
 from src.bartender import BartenderPrinter
 from src.config import DEFAULT_MAPPING
+# 修正：添加 AppUpdater 引入
+try:
+    from src.utils.updater import AppUpdater
+except ImportError:
+    AppUpdater = None
+
 import datetime
 import os
 import re
@@ -21,8 +27,13 @@ class PrintPage(QWidget):
         self.current_product = None
         self.current_sn_list = [] 
         self.current_box_no = ""
+        
         self.init_ui()
         self.refresh_data()
+        
+        # 修正：添加软件更新检查
+        if AppUpdater:
+            QTimer.singleShot(2000, lambda: AppUpdater.check_update(self))
 
     def init_ui(self):
         # 0. 主布局
@@ -50,10 +61,10 @@ class PrintPage(QWidget):
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
-        # 列表行高设置
+        # 修正：产品列表行高调整至 45/40
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(25) 
-        self.table_product.verticalHeader().setDefaultSectionSize(25) 
+        header.setFixedHeight(45) # 表头高度 45
+        self.table_product.verticalHeader().setDefaultSectionSize(40) # 数据行高度 40
 
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -69,20 +80,20 @@ class PrintPage(QWidget):
 
         # 1.3 产品详情区域
         grp = QGroupBox("产品详情")
-        # --- 修改 1: 调整 QGroupBox 样式，确保 "产品详情" 四字完整显示 ---
+        # 修正：调整 QGroupBox 样式，恢复标题上移效果 (top: -6px)
         grp.setStyleSheet("""
             QGroupBox { 
                 font-weight: bold; 
                 font-size: 16px; 
                 border: 1px solid #ccc; 
                 margin-bottom: 5px; 
-                margin-top: 20px; /* 增加顶部边距以容纳标题 */
+                margin-top: 15px; /* 恢复更小的边距 */
             } 
             QGroupBox::title { 
                 subcontrol-origin: margin; 
                 left: 10px; 
                 padding: 0 5px; 
-                /* 移除 top: -6px; */
+                top: -6px; /* 恢复标题上移 */
             }
         """)
         
@@ -136,15 +147,13 @@ class PrintPage(QWidget):
         # 产品详情 GroupBox 只包含详情信息
         h_grp_layout.addLayout(v_details_left, 10) 
         
-        # 移除原代码中的 self.lbl_print_status，因为它将被移动
-        # self.lbl_print_status = QLabel("未打印") ... h_grp_layout.addWidget(self.lbl_print_status, 3) 
-        
         v_left.addWidget(grp)
 
         # 1.4 日期与批次
         h_ctrl = QHBoxLayout()
         h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
+        # 保持用户提供的字体大小 (30px)
         style_big_ctrl = "font-size: 30px; padding: 5px; min-height: 30px;"
         style_big_lbl = "font-size: 30px; font-weight: bold; color: #333;"
 
@@ -165,16 +174,14 @@ class PrintPage(QWidget):
         
         v_left.addLayout(h_ctrl)
 
-        # --- 修改 2: 打印状态标签移出 QGroupBox，并放置在日期/批次控件右方、箱号标题上方 ---
+        # 打印状态标签
         self.lbl_print_status = QLabel("未打印")
         self.lbl_print_status.setAlignment(Qt.AlignCenter)
-        
-        # 初始样式：红色大字
         self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
         
-        # 创建一个结合了 "当前箱号" 标题和 "打印状态" 标签的新水平布局，实现图片中的对齐效果
+        # 创建一个结合了 "当前箱号" 标题和 "打印状态" 标签的新水平布局
         h_box_and_status = QHBoxLayout()
-        # 1.5 当前箱号标题
+        # 1.5 当前箱号标题 (保持用户提供的字体大小 60px)
         self.lbl_box_title = QLabel("当前箱号:")
         self.lbl_box_title.setStyleSheet("font-size: 60px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         
@@ -194,7 +201,8 @@ class PrintPage(QWidget):
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
-        self.input_sn.setStyleSheet("font-size: 60px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
+        # 修正：SN 输入框字体大小调整至 45px
+        self.input_sn.setStyleSheet("font-size: 45px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
@@ -308,7 +316,6 @@ class PrintPage(QWidget):
         self.update_box_preview(); self.update_daily(); self.input_sn.setFocus()
         
         # 重置状态标签为未打印
-        # 样式已修改为包含 padding 和 min-height，以适应新的更大区域
         self.lbl_print_status.setText("未打印")
         self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
 
@@ -363,6 +370,7 @@ class PrintPage(QWidget):
 
     def update_sn_list_ui(self):
         self.list_sn.clear()
+        # 保持 SN 列表的序号显示
         for i, (sn, _) in enumerate(self.current_sn_list):
             self.list_sn.addItem(f"{i+1}. {sn}")
         self.list_sn.scrollToBottom()
@@ -407,13 +415,21 @@ class PrintPage(QWidget):
         m = self.db.get_setting('field_mapping')
         if not isinstance(m, dict): m = DEFAULT_MAPPING
         
+        # 69码值处理
+        code69_val = str(p.get('code69', '')).strip()
+        
         src = {"name":p.get('name'), "spec":p.get('spec'), "model":p.get('model'), "color":p.get('color'),
-               "sn4":p.get('sn4'), "sku":p.get('sku'), "code69":p.get('code69'), "qty":len(self.current_sn_list),
+               "sn4":p.get('sn4'), "sku":p.get('sku'), "code69":code69_val, "qty":len(self.current_sn_list),
                "weight":p.get('weight'), "box_no":self.current_box_no, "prod_date":self.date_prod.text()}
         
         dat = {}
         for k,v in m.items(): 
             if k in src: dat[v] = src[k]
+            
+        # 修正：强制添加69码备用键，防止映射遗漏导致打印空白
+        if "code69" not in dat.values() and "Code69" not in dat.values():
+             dat["Code69"] = code69_val
+             dat["69码"] = code69_val
         
         # --- 打印逻辑：空值补齐 ---
         full_box_qty = int(p.get('qty', 0))
@@ -424,6 +440,7 @@ class PrintPage(QWidget):
             else:
                 # 传入空字符串，这样打印出来是空白，而不是模板默认值
                 dat[key] = "" 
+        # ------------------------
         
         root = self.db.get_setting('template_root')
         tp = p.get('template_path','')
@@ -435,9 +452,10 @@ class PrintPage(QWidget):
         if ok:
             # 1. 更新数据库记录
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            for sn,_ in self.current_sn_list:
+            # 修正：记录正确的 box_sn_seq (序号从 1 开始)
+            for i, (sn,_) in enumerate(self.current_sn_list):
                 self.db.cursor.execute("INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date) VALUES (?,?,?,?,?,?,?,?,?)",
-                                     (self.current_box_no, 0, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
+                                       (self.current_box_no, i+1, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
             self.db.conn.commit()
             self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
             
@@ -445,12 +463,11 @@ class PrintPage(QWidget):
             self.lbl_print_status.setText("打印完成")
             self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: green; border: 2px solid #ddd; border-radius: 8px; background-color: #e8f8f5; padding: 10px; min-height: 100px;")
             
-            # 3. 清空列表并刷新，但不弹窗
+            # 3. 清空列表并刷新
             self.current_sn_list=[]; 
             self.update_sn_list_ui()
             self.update_box_preview()
             self.update_daily()
             
-            # 移除原来的 QMessageBox.information 弹窗
         else: 
             QMessageBox.critical(self,"失败", msg)
