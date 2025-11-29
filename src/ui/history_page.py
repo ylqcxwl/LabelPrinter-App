@@ -3,14 +3,17 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QPushButton, QH
                              QMessageBox, QDateEdit, QCheckBox, QFileDialog, QLabel)
 from PyQt5.QtCore import Qt, QDate
 from src.database import Database
+from src.bartender import BartenderPrinter # 引入打印机
 import pandas as pd
 import datetime
+import os
 
 class HistoryPage(QWidget):
     def __init__(self):
         super().__init__()
         try:
             self.db = Database()
+            self.printer = BartenderPrinter() # 实例化打印机
             self.init_ui()
             self.load()
         except Exception as e:
@@ -23,12 +26,10 @@ class HistoryPage(QWidget):
         # --- 顶部工具栏 ---
         h_layout = QHBoxLayout()
         
-        # 1. 搜索框
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("搜SN / 箱号...")
         self.search_input.returnPressed.connect(self.load)
         
-        # 2. 日期筛选区域 (修改部分)
         self.chk_date = QCheckBox("日期筛选:")
         self.chk_date.stateChanged.connect(self.load)
         
@@ -44,52 +45,49 @@ class HistoryPage(QWidget):
         self.date_end.setDisplayFormat("yyyy-MM-dd")
         self.date_end.dateChanged.connect(self.load)
         
-        # 3. 按钮
         btn_search = QPushButton("查询")
         btn_search.clicked.connect(self.load)
         
         btn_exp = QPushButton("导出Excel")
         btn_exp.clicked.connect(self.export_data)
         
+        # --- 新增：重打按钮 ---
+        btn_reprint = QPushButton("重打此箱")
+        btn_reprint.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold;")
+        btn_reprint.clicked.connect(self.reprint_box)
+        # -------------------
+
         btn_del = QPushButton("删除选中")
         btn_del.setStyleSheet("color: red;")
         btn_del.clicked.connect(self.delete_records)
         
-        # 添加到布局
-        h_layout.addWidget(self.search_input, 2) # 搜索框占2份宽
+        h_layout.addWidget(self.search_input, 2)
         h_layout.addWidget(self.chk_date)
         h_layout.addWidget(self.date_start)
         h_layout.addWidget(lbl_to)
         h_layout.addWidget(self.date_end)
         h_layout.addWidget(btn_search)
         h_layout.addWidget(btn_exp)
+        h_layout.addWidget(btn_reprint) # 添加重打按钮
         h_layout.addWidget(btn_del)
         
         layout.addLayout(h_layout)
         
         # --- 表格区域 ---
         self.table = QTableWidget()
-        cols = ["ID", "箱号", "名称", "规格", "型号", "颜色", "SN", "69码", "时间"]
+        # 修改：新增 "序号" 列 (Box SN Seq)
+        cols = ["ID", "箱号", "序号", "名称", "规格", "型号", "颜色", "SN", "69码", "时间"]
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
         
-        # --- 核心修改：将第1列 ("箱号") 设置为自适应列宽 ---
         header = self.table.horizontalHeader()
-        # 将第1列设置为内容自适应宽度
+        header.setSectionResizeMode(0, QHeaderView.Stretch) 
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents) 
-        # 其他列保持原来的拉伸模式
-        header.setSectionResizeMode(0, QHeaderView.Stretch) # ID列 (索引0)
-        header.setSectionResizeMode(2, QHeaderView.Stretch) # 名称列 (索引2) 及后续
-        # QHeaderView.Stretch 会自动应用于未单独设置的列，但为确保只有第1列不同，我们显式设置
-        # 如果要让其他列恢复到默认的 QHeaderView.Stretch 行为，可以这么写：
-        for i in range(len(cols)):
-            if i != 1:
-                header.setSectionResizeMode(i, QHeaderView.Stretch)
-        # ----------------------------------------------------
+        header.setSectionResizeMode(7, QHeaderView.ResizeToContents) 
         
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.table.hideColumn(0) # 隐藏ID列
+        self.table.hideColumn(0) 
         layout.addWidget(self.table)
 
     def refresh_data(self):
@@ -102,29 +100,24 @@ class HistoryPage(QWidget):
             
             cursor = self.db.conn.cursor()
             
-            # 基础查询语句
+            # 修改查询：增加 box_sn_seq
             sql = """
-                SELECT id, box_no, name, spec, model, color, sn, code69, print_date 
+                SELECT id, box_no, box_sn_seq, name, spec, model, color, sn, code69, print_date 
                 FROM records 
                 WHERE (sn LIKE ? OR box_no LIKE ?)
             """
             params = [keyword, keyword]
             
-            # --- 修改：日期范围筛选逻辑 ---
             if self.chk_date.isChecked():
                 s_date = self.date_start.date().toString("yyyy-MM-dd")
                 e_date = self.date_end.date().toString("yyyy-MM-dd")
-                
-                # 补充时间，确保包含当天的所有记录 (00:00:00 到 23:59:59)
                 start_time = f"{s_date} 00:00:00"
                 end_time = f"{e_date} 23:59:59"
-                
                 sql += " AND print_date >= ? AND print_date <= ?"
                 params.append(start_time)
                 params.append(end_time)
-            # -----------------------------
             
-            sql += " ORDER BY id DESC LIMIT 1000" # 增加显示数量限制到1000条
+            sql += " ORDER BY id DESC LIMIT 1000"
             
             cursor.execute(sql, params)
             rows = cursor.fetchall()
@@ -133,66 +126,147 @@ class HistoryPage(QWidget):
                 self.table.insertRow(r_idx)
                 for c_idx, val in enumerate(row):
                     text = str(val) if val is not None else ""
-                    
-                    # 格式化时间显示: 2025-11-22 12:00:00 -> 20251122
-                    if c_idx == 8 and len(text) >= 10:
-                        try:
-                            text = text[:10].replace("-", "")
+                    # 时间列是最后一列 (索引9)
+                    if c_idx == 9 and len(text) >= 10:
+                        try: text = text[:10].replace("-", "")
                         except: pass
-                        
                     self.table.setItem(r_idx, c_idx, QTableWidgetItem(text))
                     
-            # 重新调整第1列（箱号）的宽度以适应内容
             self.table.resizeColumnToContents(1)
             
         except Exception as e:
             print(f"Load History Error: {e}")
 
+    def reprint_box(self):
+        """重打选中记录所属的整箱标签"""
+        row = self.table.currentRow()
+        if row < 0:
+            return QMessageBox.warning(self, "提示", "请先选择一条打印记录")
+        
+        # 获取选中行的箱号和产品名称
+        box_no = self.table.item(row, 1).text()
+        prod_name = self.table.item(row, 3).text()
+        
+        if QMessageBox.question(self, "确认", f"确定要重新打印箱号 [{box_no}] 吗？", 
+                                QMessageBox.Yes|QMessageBox.No) != QMessageBox.Yes:
+            return
+
+        try:
+            c = self.db.conn.cursor()
+            
+            # 1. 查找产品信息以获取模板路径和箱规
+            c.execute("SELECT template_path, qty, weight, sku FROM products WHERE name=?", (prod_name,))
+            prod_info = c.fetchone()
+            if not prod_info:
+                return QMessageBox.critical(self, "错误", f"找不到产品 [{prod_name}] 的信息，无法获取模板。")
+            
+            tmpl_path, qty, weight, sku = prod_info
+            
+            # 2. 查找该箱号下的所有记录
+            c.execute("SELECT sn, box_sn_seq, spec, model, color, code69, print_date FROM records WHERE box_no=? ORDER BY box_sn_seq", (box_no,))
+            records = c.fetchall()
+            
+            if not records:
+                return QMessageBox.warning(self, "错误", "未找到该箱号的记录")
+
+            # 3. 构建打印数据
+            # 取第一条记录的信息作为公共信息
+            first_rec = records[0]
+            # records struct: 0:sn, 1:seq, 2:spec, 3:model, 4:color, 5:code69, 6:date
+            
+            data_map = {
+                "name": prod_name,
+                "spec": first_rec[2],
+                "model": first_rec[3],
+                "color": first_rec[4],
+                "code69": first_rec[5],
+                "sn4": first_rec[0][:4] if len(first_rec[0])>=4 else "", # 简单提取前4
+                "sku": sku,
+                "qty": len(records), # 实际记录数
+                "weight": weight,
+                "box_no": box_no,
+                "prod_date": first_rec[6][:10] if len(first_rec[6])>=10 else ""
+            }
+            
+            # 填充 SN 列表 (1, 2, 3...)
+            # 创建一个临时的 SN 列表，索引对应 box_sn_seq
+            # 假设 box_sn_seq 是 1-based (1,2,3...)
+            # 我们需要按照装箱序号正确填入位置
+            
+            # 初始化所有位置为空
+            full_box_qty = int(qty) if qty else len(records)
+            for i in range(1, full_box_qty + 1):
+                data_map[str(i)] = ""
+            
+            # 填入实际 SN
+            for rec in records:
+                sn = rec[0]
+                # 尝试用 box_sn_seq 作为位置，如果记录中没有序号(旧数据)，则按顺序填充
+                seq = rec[1]
+                if seq and int(seq) > 0:
+                    data_map[str(seq)] = sn
+                else:
+                    # 如果没有序号，按列表顺序找一个空位填充 (简单容错)
+                    pass 
+            
+            # 如果上面 seq 逻辑复杂，这里简化：直接按列表顺序填入 1..N
+            for i, rec in enumerate(records):
+                data_map[str(i+1)] = rec[0]
+
+            # 4. 获取映射配置
+            mapping = self.db.get_setting('field_mapping')
+            from src.config import DEFAULT_MAPPING
+            if not isinstance(mapping, dict): mapping = DEFAULT_MAPPING
+            
+            # 转换键名
+            final_dat = {}
+            for k, v in mapping.items():
+                if k in data_map: final_dat[v] = data_map[k]
+            # 复制 SN 键 (1, 2, 3...)
+            for k, v in data_map.items():
+                if k.isdigit(): final_dat[k] = v
+
+            # 5. 打印
+            root = self.db.get_setting('template_root')
+            full_path = os.path.join(root, tmpl_path) if root and tmpl_path else tmpl_path
+            
+            ok, msg = self.printer.print_label(full_path, final_dat)
+            if ok:
+                QMessageBox.information(self, "成功", "补打指令已发送")
+            else:
+                QMessageBox.critical(self, "打印失败", msg)
+
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "系统错误", str(e))
+    
+    # ... export_data 和 delete_records 保持不变 ...
     def export_data(self):
         path, _ = QFileDialog.getSaveFileName(self, "导出", "print_history.xlsx", "Excel (*.xlsx)")
         if not path: return
-        
         try:
-            # 获取当前表格中所有数据 (即筛选后的数据)
-            rows = []
-            headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
-            
+            rows = []; headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
             for r in range(self.table.rowCount()):
                 row_data = []
                 for c in range(self.table.columnCount()):
                     item = self.table.item(r, c)
                     row_data.append(item.text() if item else "")
                 rows.append(row_data)
-            
-            if not rows:
-                return QMessageBox.warning(self, "提示", "当前列表无数据可导出")
-            
+            if not rows: return QMessageBox.warning(self, "提示", "无数据")
             df = pd.DataFrame(rows, columns=headers)
-            # 移除ID列导出
-            if "ID" in df.columns:
-                df = df.drop(columns=["ID"])
-                
+            if "ID" in df.columns: df = df.drop(columns=["ID"])
             df.to_excel(path, index=False)
-            QMessageBox.information(self, "成功", f"已成功导出 {len(rows)} 条记录！")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "错误", str(e))
+            QMessageBox.information(self, "成功", "导出成功")
+        except Exception as e: QMessageBox.critical(self, "错误", str(e))
 
     def delete_records(self):
         try:
-            selected_rows = self.table.selectedIndexes()
-            if not selected_rows:
-                return QMessageBox.warning(self, "提示", "未选中任何记录")
-            
-            rows = set(index.row() for index in selected_rows)
+            rows = set(i.row() for i in self.table.selectedIndexes())
+            if not rows: return QMessageBox.warning(self, "提示", "未选中")
             ids = [self.table.item(r, 0).text() for r in rows]
-            
-            if QMessageBox.question(self, "确认", f"确定删除 {len(ids)} 条记录?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
-                placeholders = ",".join("?" * len(ids))
-                sql = f"DELETE FROM records WHERE id IN ({placeholders})"
-                self.db.cursor.execute(sql, ids)
+            if QMessageBox.question(self, "确认", f"删 {len(ids)} 条?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                p = ",".join("?" * len(ids))
+                self.db.cursor.execute(f"DELETE FROM records WHERE id IN ({p})", ids)
                 self.db.conn.commit()
                 self.load()
-                
-        except Exception as e:
-            QMessageBox.critical(self, "错误", str(e))
+        except Exception as e: QMessageBox.critical(self, "错误", str(e))
