@@ -38,79 +38,57 @@ class Database:
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                box_no TEXT NOT NULL, box_sn_seq INTEGER,
-                name TEXT, spec TEXT, model TEXT, color TEXT,
-                code69 TEXT, sn TEXT NOT NULL, print_date TEXT
+                box_sn_seq INTEGER, name TEXT, spec TEXT, model TEXT, color TEXT,
+                code69 TEXT, sn TEXT, box_no TEXT, prod_date TEXT, print_date TEXT
             )
         ''')
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY, value TEXT
-            )
-        ''')
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS box_counters (
-                key TEXT PRIMARY KEY, current_val INTEGER
-            )
-        ''')
+        self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+        self.cursor.execute('CREATE TABLE IF NOT EXISTS box_counters (key TEXT PRIMARY KEY, current_val INTEGER)')
+        
+        # 字段检查补全
+        self._check_and_add_column('products', 'rule_id', 'INTEGER DEFAULT 0')
+        self._check_and_add_column('products', 'sn_rule_id', 'INTEGER DEFAULT 0')
+        self._check_and_add_column('box_rules', 'rule_string', 'TEXT')
+        
+        # 初始化默认设置
+        default_mapping_json = json.dumps(DEFAULT_MAPPING)
+        self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('field_mapping', ?)", (default_mapping_json,))
+        self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('backup_path', ?)", (os.path.abspath("./backups"),))
+        
+        default_tmpl_root = os.path.abspath("./templates")
+        if not os.path.exists(default_tmpl_root): os.makedirs(default_tmpl_root, exist_ok=True)
+        self.cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('template_root', ?)", (default_tmpl_root,))
+        
         self.conn.commit()
 
-        # 检查并初始化默认设置
-        self.init_default_settings()
-        self.init_field_mapping()
+    def _check_and_add_column(self, table_name, column_name, column_type):
+        try:
+            self.cursor.execute(f"PRAGMA table_info({table_name})")
+            if column_name not in [i[1] for i in self.cursor.fetchall()]:
+                self.cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+        except: pass
 
-    def init_default_settings(self):
-        # 检查并插入默认设置
-        if not self.get_setting('template_root'):
-            self.set_setting('template_root', os.path.abspath("templates"))
-        if not self.get_setting('backup_path'):
-            self.set_setting('backup_path', os.path.abspath("backup"))
-        if not self.get_setting('default_printer'):
-            self.set_setting('default_printer', '使用系统默认打印机')
-        self.conn.commit()
-
-    def get_setting(self, key, default=None):
+    def get_setting(self, key):
         self.cursor.execute("SELECT value FROM settings WHERE key=?", (key,))
-        res = self.cursor.fetchone()
-        return json.loads(res[0]) if res else default
+        r = self.cursor.fetchone()
+        if r and key == 'field_mapping':
+            try: return json.loads(r[0])
+            except: return DEFAULT_MAPPING
+        return r[0] if r else None
 
     def set_setting(self, key, value):
-        val = json.dumps(value)
-        self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
-
-    def init_field_mapping(self):
-        current_map = self.get_setting('field_mapping')
-        if not current_map:
-            self.set_setting('field_mapping', DEFAULT_MAPPING)
-            self.conn.commit()
-
-    def get_field_mapping(self):
-        return self.get_setting('field_mapping', DEFAULT_MAPPING)
-    
-    def set_field_mapping(self, mapping):
-        self.set_setting('field_mapping', mapping)
+        self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         self.conn.commit()
 
-    def backup_db(self, manual=True):
+    def backup_db(self, custom_path=None):
         try:
-            backup_path = self.get_setting('backup_path')
-            if not backup_path: return False, "未设置备份目录"
-            
-            os.makedirs(backup_path, exist_ok=True)
-            
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = os.path.join(backup_path, f"label_printer_{timestamp}.db")
-            
-            # 关闭当前连接，以确保备份文件是最新的
-            self.conn.close() 
-            shutil.copy2(self.db_name, backup_file)
-            # 重新连接
-            self.conn = sqlite3.connect(self.db_name)
-            self.cursor = self.conn.cursor()
-            
-            return True, f"备份成功: {os.path.basename(backup_file)}"
-        except Exception as e:
-            return False, f"备份失败: {e}"
+            td = custom_path if custom_path else self.get_setting('backup_path')
+            if not os.path.exists(td): os.makedirs(td)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            f = os.path.join(td, f"backup_{ts}.db")
+            self.conn.commit(); shutil.copy2(self.db_name, f)
+            return True, f"备份成功: {f}"
+        except Exception as e: return False, str(e)
 
     def restore_db(self, path):
         try:
@@ -138,5 +116,11 @@ class Database:
 
     def increment_box_counter(self, product_id, rule_id, year, month, repair_level=0):
         key = f"P{product_id}_R{rule_id}_{year}_{month}_{repair_level}"
-        self.cursor.execute("INSERT OR REPLACE INTO box_counters (key, current_val) VALUES (?, COALESCE((SELECT current_val FROM box_counters WHERE key=?), 0) + 1)", (key, key))
+        current = self.get_box_counter(product_id, rule_id, year, month, repair_level)
+        new_val = current + 1
+        self.cursor.execute("INSERT OR REPLACE INTO box_counters (key, current_val) VALUES (?, ?)", (key, new_val))
         self.conn.commit()
+        return new_val
+
+    def close(self):
+        self.conn.close()
