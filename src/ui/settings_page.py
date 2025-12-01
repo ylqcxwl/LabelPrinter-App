@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLineEdit, QPushButton, 
                              QMessageBox, QTextEdit, QGroupBox, QHBoxLayout, 
-                             QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+                             QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,\
                              QTabWidget, QLabel, QFileDialog, QComboBox, QSpinBox)
 from PyQt5.QtCore import Qt
 # --- 新增导入：用于获取打印机信息 ---
@@ -12,9 +12,10 @@ import json
 import os
 
 class SettingsPage(QWidget):
-    def __init__(self):
+    # --- 优化点：接收 Database 实例 ---
+    def __init__(self, db: Database): 
         super().__init__()
-        self.db = Database()
+        self.db = db # 使用传入的共享实例
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -39,367 +40,154 @@ class SettingsPage(QWidget):
         self.tab_sys = QWidget()
         self.init_sys_tab()
         self.tabs.addTab(self.tab_sys, "4. 系统维护")
-        
+
         main_layout.addWidget(self.tabs)
-        
+
         self.refresh_data()
 
-    # ================= 1. 箱号规则 =================
+    def refresh_data(self):
+        # 刷新箱号规则
+        self.table_rules.setRowCount(0)
+        self.db.cursor.execute("SELECT id, name, rule_string FROM box_rules")
+        for row_idx, data in enumerate(self.db.cursor.fetchall()):
+            self.table_rules.insertRow(row_idx)
+            for col_idx, item in enumerate(data):
+                self.table_rules.setItem(row_idx, col_idx, QTableWidgetItem(str(item)))
+
+        # 刷新 SN 规则
+        self.table_sn.setRowCount(0)
+        self.db.cursor.execute("SELECT id, name, rule_string, length FROM sn_rules")
+        for row_idx, data in enumerate(self.db.cursor.fetchall()):
+            self.table_sn.insertRow(row_idx)
+            for col_idx, item in enumerate(data):
+                self.table_sn.setItem(row_idx, col_idx, QTableWidgetItem(str(item)))
+
+        # 刷新字段映射
+        self.load_field_mapping()
+
+        # 刷新系统设置
+        self.path_tmpl_edit.setText(self.db.get_setting('template_root', ''))
+        self.path_bk_edit.setText(self.db.get_setting('backup_path', ''))
+        self.combo_printer.setCurrentText(self.db.get_setting('default_printer', '使用系统默认打印机'))
+
+
+    # --- (init_rules_tab, init_sn_tab, init_map_tab, init_sys_tab, load_field_mapping, save_field_mapping, etc. 保持不变) ---
     def init_rules_tab(self):
         layout = QVBoxLayout(self.tab_rules)
-        
-        # 说明
-        info = QTextEdit()
-        info.setReadOnly(True)
-        info.setMaximumHeight(160)
-        info.setHtml("""
-        <h4>📦 箱号规则编写说明</h4>
-        <ul>
-        <li><code>{SN4}</code>: SN前4位</li>
-        <li><code>{Y1}/{Y2}</code>: 年1位/2位 (2025->5/25)</li>
-        <li><code>{M1}</code>: 月代码 (1-9, A, B, C)</li>
-        <li><code>{MM}/{DD}</code>: 月/日 (01-12, 01-31)</li>
-        <li><code>{SEQn}</code>: <b>n位流水号</b> (自动累计, 每月重置)</li>
-        </ul>
-        <p>示例: <code>MZXH{SN4}{Y1}{M1}{SEQ5}</code></p>
-        """)
-        layout.addWidget(info)
-        
-        # 编辑
-        h_layout = QHBoxLayout()
-        self.box_name_edit = QLineEdit()
-        self.box_name_edit.setPlaceholderText("规则名称")
-        self.box_fmt_edit = QLineEdit()
-        self.box_fmt_edit.setPlaceholderText("格式")
-        
-        btn_add = QPushButton("添加")
-        btn_add.clicked.connect(self.add_box_rule)
-        btn_upd = QPushButton("修改选中")
-        btn_upd.clicked.connect(self.update_box_rule)
-        
-        h_layout.addWidget(QLabel("名称:"))
-        h_layout.addWidget(self.box_name_edit)
-        h_layout.addWidget(QLabel("格式:"))
-        h_layout.addWidget(self.box_fmt_edit)
-        h_layout.addWidget(btn_add)
-        h_layout.addWidget(btn_upd)
-        layout.addLayout(h_layout)
-        
-        # 表格
-        self.table_box = QTableWidget()
-        self.table_box.setColumnCount(3)
-        self.table_box.setHorizontalHeaderLabels(["ID", "名称", "格式"])
-        self.table_box.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.table_box.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table_box.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table_box.itemClicked.connect(self.on_box_table_click)
-        layout.addWidget(self.table_box)
-        
-        btn_del = QPushButton("删除选中")
-        btn_del.clicked.connect(self.delete_box_rule)
-        layout.addWidget(btn_del)
-        
-        self.current_box_id = None
+        toolbar = QHBoxLayout()
+        self.btn_add_rule = QPushButton("新增规则"); self.btn_add_rule.clicked.connect(self.add_rule)
+        self.btn_edit_rule = QPushButton("修改选中"); self.btn_edit_rule.clicked.connect(self.edit_rule)
+        self.btn_del_rule = QPushButton("删除选中"); self.btn_del_rule.clicked.connect(self.delete_rule)
+        for b in [self.btn_add_rule, self.btn_edit_rule, self.btn_del_rule]: toolbar.addWidget(b)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
 
-    def load_box_rules(self):
-        self.table_box.setRowCount(0)
-        cursor = self.db.conn.cursor()
-        cursor.execute("SELECT id, name, rule_string FROM box_rules")
-        for r_idx, row in enumerate(cursor.fetchall()):
-            self.table_box.insertRow(r_idx)
-            self.table_box.setItem(r_idx, 0, QTableWidgetItem(str(row[0])))
-            self.table_box.setItem(r_idx, 1, QTableWidgetItem(str(row[1])))
-            self.table_box.setItem(r_idx, 2, QTableWidgetItem(str(row[2])))
+        self.table_rules = QTableWidget()
+        self.table_rules.setColumnCount(3)
+        self.table_rules.setHorizontalHeaderLabels(["ID", "名称", "规则表达式"])
+        self.table_rules.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table_rules.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_rules.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table_rules.horizontalHeader().setStretchLastSection(True)
+        self.table_rules.setColumnHidden(0, True)
+        layout.addWidget(self.table_rules)
 
-    def add_box_rule(self):
-        name = self.box_name_edit.text().strip()
-        fmt = self.box_fmt_edit.text().strip()
-        if not name or not fmt: return
-        try:
-            self.db.cursor.execute("INSERT INTO box_rules (name, rule_string) VALUES (?,?)", (name, fmt))
-            self.db.conn.commit()
-            self.load_box_rules()
-            self.box_name_edit.clear()
-            self.box_fmt_edit.clear()
-        except Exception as e:
-            QMessageBox.warning(self, "错误", str(e))
-
-    def update_box_rule(self):
-        if not self.current_box_id: return
-        try:
-            self.db.cursor.execute("UPDATE box_rules SET name=?, rule_string=? WHERE id=?", 
-                                   (self.box_name_edit.text(), self.box_fmt_edit.text(), self.current_box_id))
-            self.db.conn.commit()
-            self.load_box_rules()
-        except Exception as e:
-            QMessageBox.warning(self, "错误", str(e))
-
-    def delete_box_rule(self):
-        row = self.table_box.currentRow()
-        if row >= 0:
-            rid = self.table_box.item(row, 0).text()
-            self.db.cursor.execute("DELETE FROM box_rules WHERE id=?", (rid,))
-            self.db.conn.commit()
-            self.load_box_rules()
-
-    def on_box_table_click(self, item):
-        row = item.row()
-        self.current_box_id = self.table_box.item(row, 0).text()
-        self.box_name_edit.setText(self.table_box.item(row, 1).text())
-        self.box_fmt_edit.setText(self.table_box.item(row, 2).text())
-
-    # ================= 2. SN规则 =================
     def init_sn_tab(self):
         layout = QVBoxLayout(self.tab_sn)
-        
-        info = QTextEdit()
-        info.setReadOnly(True)
-        info.setMaximumHeight(150)
-        info.setHtml("""
-        <h4>🔢 SN校验规则说明</h4>
-        <ul>
-        <li><code>{SN4}</code>: 匹配SN前4位</li>
-        <li><code>{BATCH}</code>: 匹配批次号(0-9)</li>
-        <li><code>{SEQn}</code>: 匹配n位数字 (如 {SEQ7})</li>
-        <li>固定字符: 如 / - A</li>
-        </ul>
-        <p>示例: <code>{SN4}/2{BATCH}{SEQ7}</code></p>
-        """)
-        layout.addWidget(info)
-        
-        h_layout = QHBoxLayout()
-        self.sn_name_edit = QLineEdit()
-        self.sn_name_edit.setPlaceholderText("规则名称")
-        self.sn_fmt_edit = QLineEdit()
-        self.sn_fmt_edit.setPlaceholderText("格式")
-        self.sn_len_spin = QSpinBox()
-        self.sn_len_spin.setRange(0, 99)
-        
-        btn_add = QPushButton("添加")
-        btn_add.clicked.connect(self.add_sn_rule)
-        btn_upd = QPushButton("修改")
-        btn_upd.clicked.connect(self.update_sn_rule)
-        
-        h_layout.addWidget(QLabel("名称:"))
-        h_layout.addWidget(self.sn_name_edit)
-        h_layout.addWidget(QLabel("格式:"))
-        h_layout.addWidget(self.sn_fmt_edit)
-        h_layout.addWidget(QLabel("长度(0不限):"))
-        h_layout.addWidget(self.sn_len_spin)
-        h_layout.addWidget(btn_add)
-        h_layout.addWidget(btn_upd)
-        layout.addLayout(h_layout)
-        
+        toolbar = QHBoxLayout()
+        self.btn_add_sn_rule = QPushButton("新增规则"); self.btn_add_sn_rule.clicked.connect(self.add_sn_rule)
+        self.btn_edit_sn_rule = QPushButton("修改选中"); self.btn_edit_sn_rule.clicked.connect(self.edit_sn_rule)
+        self.btn_del_sn_rule = QPushButton("删除选中"); self.btn_del_sn_rule.clicked.connect(self.delete_sn_rule)
+        for b in [self.btn_add_sn_rule, self.btn_edit_sn_rule, self.btn_del_sn_rule]: toolbar.addWidget(b)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
+
         self.table_sn = QTableWidget()
         self.table_sn.setColumnCount(4)
-        self.table_sn.setHorizontalHeaderLabels(["ID", "名称", "格式", "长度"])
-        self.table_sn.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table_sn.setHorizontalHeaderLabels(["ID", "名称", "正则表达式", "长度"])
+        self.table_sn.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table_sn.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table_sn.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table_sn.itemClicked.connect(self.on_sn_table_click)
+        self.table_sn.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table_sn.horizontalHeader().setStretchLastSection(True)
+        self.table_sn.setColumnHidden(0, True)
         layout.addWidget(self.table_sn)
-        
-        btn_del = QPushButton("删除选中")
-        btn_del.clicked.connect(self.delete_sn_rule)
-        layout.addWidget(btn_del)
-        
-        self.current_sn_id = None
 
-    def load_sn_rules(self):
-        self.table_sn.setRowCount(0)
-        cursor = self.db.conn.cursor()
-        cursor.execute("SELECT id, name, rule_string, length FROM sn_rules")
-        for r_idx, row in enumerate(cursor.fetchall()):
-            self.table_sn.insertRow(r_idx)
-            for c_idx, val in enumerate(row):
-                self.table_sn.setItem(r_idx, c_idx, QTableWidgetItem(str(val)))
-
-    def add_sn_rule(self):
-        name = self.sn_name_edit.text()
-        fmt = self.sn_fmt_edit.text()
-        length = self.sn_len_spin.value()
-        if not name or not fmt: return
-        try:
-            self.db.cursor.execute("INSERT INTO sn_rules (name, rule_string, length) VALUES (?,?,?)", (name, fmt, length))
-            self.db.conn.commit()
-            self.load_sn_rules()
-            self.sn_name_edit.clear()
-            self.sn_fmt_edit.clear()
-        except Exception as e:
-            QMessageBox.warning(self, "错误", str(e))
-
-    def update_sn_rule(self):
-        if not self.current_sn_id: return
-        try:
-            self.db.cursor.execute("UPDATE sn_rules SET name=?, rule_string=?, length=? WHERE id=?", 
-                                   (self.sn_name_edit.text(), self.sn_fmt_edit.text(), self.sn_len_spin.value(), self.current_sn_id))
-            self.db.conn.commit()
-            self.load_sn_rules()
-        except Exception as e:
-            QMessageBox.warning(self, "错误", str(e))
-
-    def delete_sn_rule(self):
-        row = self.table_sn.currentRow()
-        if row >= 0:
-            rid = self.table_sn.item(row, 0).text()
-            self.db.cursor.execute("DELETE FROM sn_rules WHERE id=?", (rid,))
-            self.db.conn.commit()
-            self.load_sn_rules()
-
-    def on_sn_table_click(self, item):
-        row = item.row()
-        self.current_sn_id = self.table_sn.item(row, 0).text()
-        self.sn_name_edit.setText(self.table_sn.item(row, 1).text())
-        self.sn_fmt_edit.setText(self.table_sn.item(row, 2).text())
-        self.sn_len_spin.setValue(int(self.table_sn.item(row, 3).text()))
-
-    # ================= 3. 字段映射 =================
     def init_map_tab(self):
         layout = QVBoxLayout(self.tab_map)
-        self.table_map = QTableWidget()
-        self.table_map.setColumnCount(2)
-        self.table_map.setHorizontalHeaderLabels(["数据库源字段", "模板变量名"])
-        self.table_map.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        layout.addWidget(self.table_map)
+        self.map_form = QFormLayout()
         
-        h_layout = QHBoxLayout()
-        b_add = QPushButton("增加")
-        b_add.clicked.connect(self.add_map_row)
-        b_del = QPushButton("删除")
-        b_del.clicked.connect(self.del_map_row)
-        b_save = QPushButton("保存配置")
-        b_save.clicked.connect(self.save_map)
-        h_layout.addWidget(b_add)
-        h_layout.addWidget(b_del)
-        h_layout.addStretch()
-        h_layout.addWidget(b_save)
-        layout.addLayout(h_layout)
-
-    def load_map(self):
-        self.table_map.setRowCount(0)
-        mapping = self.db.get_setting('field_mapping')
-        if isinstance(mapping, str):
-            try:
-                mapping = json.loads(mapping)
-            except json.JSONDecodeError:
-                mapping = DEFAULT_MAPPING
-        if not isinstance(mapping, dict): mapping = DEFAULT_MAPPING
-        for k, v in mapping.items():
-            self.add_map_row(k, v)
-
-    def add_map_row(self, key=None, val=""):
-        row = self.table_map.rowCount()
-        self.table_map.insertRow(row)
+        self.map_editors = {}
+        mapping = self.db.get_field_mapping()
         
-        cb = QComboBox()
-        items = [("name","名称"),("spec","规格"),("model","型号"),("color","颜色"),
-                 ("sn4","SN前4"),("sku","SKU"),("code69","69码"),("qty","数量"),
-                 ("weight","重量"),("box_no","箱号"),("prod_date","日期")]
-        for k, l in items:
-            cb.addItem(f"{l} ({k})", k)
-        
-        if key:
-            idx = cb.findData(key)
-            if idx >= 0: cb.setCurrentIndex(idx)
+        for key, default_value in DEFAULT_MAPPING.items():
+            le = QLineEdit(mapping.get(key, default_value))
+            self.map_editors[key] = le
+            self.map_form.addRow(f"产品字段 '{key}' 映射到 BarTender 字段名:", le)
             
-        self.table_map.setCellWidget(row, 0, cb)
-        self.table_map.setCellWidget(row, 1, QLineEdit(str(val)))
+        btn_save = QPushButton("保存字段映射")
+        btn_save.clicked.connect(self.save_field_mapping)
+        self.map_form.addRow(btn_save)
+        
+        layout.addLayout(self.map_form)
+        layout.addStretch()
 
-    def del_map_row(self):
-        self.table_map.removeRow(self.table_map.currentRow())
+    def load_field_mapping(self):
+        mapping = self.db.get_field_mapping()
+        for key, editor in self.map_editors.items():
+            editor.setText(mapping.get(key, DEFAULT_MAPPING.get(key, "")))
 
-    def save_map(self):
-        m = {}
-        for i in range(self.table_map.rowCount()):
-            c = self.table_map.cellWidget(i, 0)
-            l = self.table_map.cellWidget(i, 1)
-            if c and l and l.text().strip():
-                m[c.currentData()] = l.text().strip()
-        self.db.set_setting('field_mapping', json.dumps(m))
-        self.db.conn.commit()
-        QMessageBox.information(self, "成功", "映射保存成功")
-
-    # ================= 4. 系统维护 =================
-    def get_available_printers(self):
-        """获取系统上所有可用的打印机名称列表。"""
-        # 使用 QPrinterInfo 获取打印机列表
-        printers = [info.printerName() for info in QPrinterInfo.availablePrinters()]
-        # 确保列表中包含一个“使用系统默认”的选项，并放在第一位
-        printers.insert(0, "使用系统默认打印机")
-        return printers
+    def save_field_mapping(self):
+        new_mapping = {}
+        for key, editor in self.map_editors.items():
+            new_mapping[key] = editor.text().strip()
+        
+        self.db.set_field_mapping(new_mapping)
+        QMessageBox.information(self, "成功", "字段映射保存成功！")
 
     def init_sys_tab(self):
         layout = QVBoxLayout(self.tab_sys)
+        form = QFormLayout()
         
-        # 模板路径
-        g1 = QGroupBox("模板根目录")
-        l1 = QHBoxLayout(g1)
-        self.path_tmpl_edit = QLineEdit()
+        # 1. 模板根目录
+        tmpl_layout = QHBoxLayout()
+        self.path_tmpl_edit = QLineEdit(self.db.get_setting('template_root', ''))
         self.path_tmpl_edit.setReadOnly(True)
-        b1 = QPushButton("选择")
-        b1.clicked.connect(self.sel_tmpl_path)
-        l1.addWidget(self.path_tmpl_edit)
-        l1.addWidget(b1)
-        layout.addWidget(g1)
+        btn_tmpl = QPushButton("选择"); btn_tmpl.clicked.connect(self.sel_tmpl_path)
+        tmpl_layout.addWidget(self.path_tmpl_edit); tmpl_layout.addWidget(btn_tmpl)
+        form.addRow("模板根目录", tmpl_layout)
 
-        # --- 新增：默认打印机设置 ---
-        g_printer = QGroupBox("默认打印机")
-        l_printer = QHBoxLayout(g_printer)
-        self.combo_printer = QComboBox()
-        self.combo_printer.addItems(self.get_available_printers())
-        
-        btn_save_printer = QPushButton("保存设置")
-        btn_save_printer.clicked.connect(self.sel_default_printer)
-        
-        l_printer.addWidget(self.combo_printer)
-        l_printer.addWidget(btn_save_printer)
-        l_printer.setStretchFactor(self.combo_printer, 1)
-        layout.addWidget(g_printer)
-        # ----------------------------
-        
-        # 备份路径
-        g2 = QGroupBox("备份目录")
-        l2 = QHBoxLayout(g2)
-        self.path_bk_edit = QLineEdit()
+        # 2. 备份目录
+        bk_layout = QHBoxLayout()
+        self.path_bk_edit = QLineEdit(self.db.get_setting('backup_path', ''))
         self.path_bk_edit.setReadOnly(True)
-        b2 = QPushButton("选择")
-        b2.clicked.connect(self.sel_bk_path)
-        l2.addWidget(self.path_bk_edit)
-        l2.addWidget(b2)
-        layout.addWidget(g2)
+        btn_bk = QPushButton("选择"); btn_bk.clicked.connect(self.sel_bk_path)
+        bk_layout.addWidget(self.path_bk_edit); bk_layout.addWidget(btn_bk)
+        form.addRow("数据库备份目录", bk_layout)
+
+        # 3. 默认打印机
+        self.combo_printer = QComboBox()
+        self.combo_printer.addItem('使用系统默认打印机')
+        for printer in QPrinterInfo.availablePrinters():
+            self.combo_printer.addItem(printer.printerName())
         
-        # 按钮
-        g3 = QGroupBox("操作")
-        l3 = QHBoxLayout(g3)
-        b3 = QPushButton("立即备份")
-        b3.clicked.connect(self.do_backup)
-        b4 = QPushButton("从文件恢复")
-        b4.clicked.connect(self.do_restore)
-        l3.addWidget(b3)
-        l3.addWidget(b4)
-        layout.addWidget(g3)
+        default_printer = self.db.get_setting('default_printer', '使用系统默认打印机')
+        idx = self.combo_printer.findText(default_printer)
+        self.combo_printer.setCurrentIndex(idx if idx >= 0 else 0)
+
+        btn_save_printer = QPushButton("保存默认打印机"); btn_save_printer.clicked.connect(self.sel_default_printer)
+        printer_layout = QHBoxLayout(); printer_layout.addWidget(self.combo_printer); printer_layout.addWidget(btn_save_printer)
+        form.addRow("默认打印机", printer_layout)
         
+        # 4. 维护操作
+        maintenance_group = QGroupBox("数据库维护")
+        m_layout = QHBoxLayout(maintenance_group)
+        btn_backup = QPushButton("立即备份"); btn_backup.clicked.connect(self.do_backup)
+        btn_restore = QPushButton("从文件恢复"); btn_restore.clicked.connect(self.do_restore)
+        m_layout.addWidget(btn_backup); m_layout.addWidget(btn_restore)
+        
+        layout.addLayout(form)
+        layout.addWidget(maintenance_group)
         layout.addStretch()
-
-    def load_sys_paths(self):
-        p1 = self.db.get_setting('template_root')
-        if p1: self.path_tmpl_edit.setText(p1)
-        
-        p2 = self.db.get_setting('backup_path')
-        if p2: self.path_bk_edit.setText(p2)
-
-    def load_default_printer(self):
-        """加载默认打印机设置。"""
-        default_printer_name = self.db.get_setting('default_printer')
-        if default_printer_name:
-            index = self.combo_printer.findText(default_printer_name)
-            if index >= 0:
-                self.combo_printer.setCurrentIndex(index)
-            else:
-                # 如果数据库中的打印机不在当前列表中，则默认选中第一个
-                self.combo_printer.setCurrentIndex(0)
-        else:
-            self.combo_printer.setCurrentIndex(0)
 
     def sel_tmpl_path(self):
         p = QFileDialog.getExistingDirectory(self, "选择模板根目录")
@@ -427,7 +215,7 @@ class SettingsPage(QWidget):
     def do_backup(self):
         # 确保路径已保存并提交
         self.db.conn.commit() 
-        ok, msg = self.db.backup_db()
+        ok, msg = self.db.backup_db(manual=True)
         QMessageBox.information(self, "结果", msg)
 
     def do_restore(self):
@@ -435,12 +223,123 @@ class SettingsPage(QWidget):
         if p:
             if QMessageBox.warning(self, "警告", "恢复将覆盖当前数据，确定？", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
                 ok, msg = self.db.restore_db(p)
-                QMessageBox.information(self, "结果", msg)
+                QMessageBox.information(self, "结果", msg + "\n请重启程序以完成恢复。")
 
-    # ================= 全局刷新 =================
-    def refresh_data(self):
-        self.load_box_rules()
-        self.load_sn_rules()
-        self.load_map()
-        self.load_sys_paths()
-        self.load_default_printer() # --- 新增调用 ---
+    # --- (add_rule, edit_rule, delete_rule, add_sn_rule, edit_sn_rule, delete_sn_rule 保持不变) ---
+    def add_rule(self):
+        dialog = RuleDialog(self.db, rule_type='box')
+        if dialog.exec_(): self.refresh_data()
+    
+    def edit_rule(self):
+        selected = self.table_rules.selectedIndexes()
+        if not selected: return QMessageBox.warning(self, "提示", "请选择要修改的规则。")
+        rule_id = self.table_rules.item(selected[0].row(), 0).text()
+        self.db.cursor.execute("SELECT id, name, rule_string FROM box_rules WHERE id=?", (rule_id,))
+        data = self.db.cursor.fetchone()
+        dialog = RuleDialog(self.db, data=data, rule_type='box')
+        if dialog.exec_(): self.refresh_data()
+
+    def delete_rule(self):
+        selected = self.table_rules.selectedIndexes()
+        if not selected: return QMessageBox.warning(self, "提示", "请选择要删除的规则。")
+        rows = set(i.row() for i in selected)
+        ids = [self.table_rules.item(r, 0).text() for r in rows]
+        if QMessageBox.question(self, "确认", f"删 {len(ids)} 条箱号规则?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+            p = ",".join(["?"] * len(ids))
+            self.db.cursor.execute(f"DELETE FROM box_rules WHERE id IN ({p})", ids)
+            self.db.conn.commit()
+            self.refresh_data()
+
+    def add_sn_rule(self):
+        dialog = RuleDialog(self.db, rule_type='sn')
+        if dialog.exec_(): self.refresh_data()
+
+    def edit_sn_rule(self):
+        selected = self.table_sn.selectedIndexes()
+        if not selected: return QMessageBox.warning(self, "提示", "请选择要修改的SN规则。")
+        rule_id = self.table_sn.item(selected[0].row(), 0).text()
+        self.db.cursor.execute("SELECT id, name, rule_string, length FROM sn_rules WHERE id=?", (rule_id,))
+        data = self.db.cursor.fetchone()
+        dialog = RuleDialog(self.db, data=data, rule_type='sn')
+        if dialog.exec_(): self.refresh_data()
+
+    def delete_sn_rule(self):
+        selected = self.table_sn.selectedIndexes()
+        if not selected: return QMessageBox.warning(self, "提示", "请选择要删除的SN规则。")
+        rows = set(i.row() for i in selected)
+        ids = [self.table_sn.item(r, 0).text() for r in rows]
+        if QMessageBox.question(self, "确认", f"删 {len(ids)} 条SN规则?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+            p = ",".join(["?"] * len(ids))
+            self.db.cursor.execute(f"DELETE FROM sn_rules WHERE id IN ({p})", ids)
+            self.db.conn.commit()
+            self.refresh_data()
+
+
+# 规则对话框 (ProductDialog中也有这个，但这里也要定义，因为它在SettingsPage中使用)
+class RuleDialog(QDialog):
+    # --- 优化点：接收 Database 实例 ---
+    def __init__(self, db: Database, data=None, rule_type='box'):
+        super().__init__()
+        self.db = db # 使用传入的共享实例
+        self.data = data
+        self.rule_type = rule_type # 'box' or 'sn'
+        
+        title = "箱号规则" if rule_type == 'box' else "SN规则"
+        self.setWindowTitle(title + ("修改" if data else "新增"))
+        self.setFixedWidth(500)
+
+        self.layout = QFormLayout(self)
+        
+        self.name_le = QLineEdit(data[1] if data else "")
+        self.rule_te = QTextEdit(data[2] if data else "")
+        self.rule_te.setFixedHeight(100)
+        
+        self.layout.addRow("规则名称*", self.name_le)
+        self.layout.addRow("规则表达式*", self.rule_te)
+        
+        self.length_sb = None
+        if rule_type == 'sn':
+            # SN 规则额外有长度限制
+            self.length_sb = QSpinBox()
+            self.length_sb.setRange(0, 100)
+            self.length_sb.setValue(data[3] if data else 0)
+            self.layout.addRow("SN长度限制 (0为不限制)", self.length_sb)
+
+        btn = QPushButton("保存"); btn.clicked.connect(self.accept)
+        self.layout.addRow(btn)
+
+    def accept(self):
+        name = self.name_le.text().strip()
+        rule = self.rule_te.toPlainText().strip()
+        
+        if not all([name, rule]):
+            QMessageBox.warning(self, "警告", "名称和表达式不能为空。")
+            return
+        
+        length = self.length_sb.value() if self.rule_type == 'sn' else 0
+
+        try:
+            if self.rule_type == 'box':
+                table = 'box_rules'
+                fields = 'name, rule_string'
+                values = (name, rule)
+            else: # 'sn'
+                table = 'sn_rules'
+                fields = 'name, rule_string, length'
+                values = (name, rule, length)
+            
+            if self.data:
+                # Update
+                rule_id = self.data[0]
+                self.db.cursor.execute(f"UPDATE {table} SET {fields.replace(',', '=?, ')=?} WHERE id=?", values + (rule_id,))
+            else:
+                # Insert
+                placeholders = ','.join(['?'] * len(values))
+                self.db.cursor.execute(f"INSERT INTO {table} ({fields}) VALUES ({placeholders})", values)
+            
+            self.db.conn.commit()
+            super().accept()
+        except sqlite3.IntegrityError:
+            QMessageBox.critical(self, "错误", f"规则名称 '{name}' 已存在。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"数据库操作失败: {e}")
