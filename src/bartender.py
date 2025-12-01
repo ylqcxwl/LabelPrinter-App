@@ -26,9 +26,9 @@ class BartenderPrinter:
 
         bt_format = None
         try:
-            # --- 修复：防止模板被覆盖 ---
+            # --- 修复关键点 1: 保持以只读模式打开 ---
             # Open(FileName, ReadOnly, Password)
-            # 将 ReadOnly 设置为 True，确保绝对不会保存对模板的修改
+            # ReadOnly=True
             bt_format = self.bt_app.Formats.Open(template_path, True, "")
             
             # --- 设置默认打印机 ---
@@ -49,21 +49,27 @@ class BartenderPrinter:
             # PrintOut(ShowStatusWindow, ShowDialog)
             bt_format.PrintOut(False, False) 
             
-            # 关闭不保存 (CloseOptions: 2 = btDoNotSaveChanges)
-            # 虽然已经是 ReadOnly 打开，但再次强制不保存
-            bt_format.Close(2) 
+            # --- 修复关键点 2: 强制不保存 ---
+            # CloseOptions 枚举: 
+            # 0 = btSaveChanges (保存)
+            # 1 = btDoNotSaveChanges (不保存) <--- 修改为 1
+            # 2 = btPromptSaveChanges (询问)
+            bt_format.Close(1) 
             
             return True, "打印成功"
         except Exception as e:
             # 异常处理：尝试关闭模板防止锁死
             try:
-                if bt_format: bt_format.Close(2)
+                # 同样确保异常退出时也不保存
+                if bt_format: bt_format.Close(1)
             except: pass
             return False, f"打印出错: {str(e)}"
 
     def quit(self):
         if self.bt_app:
             try:
-                self.bt_app.Quit(2) # 2 = btDoNotSaveChanges
+                # --- 修复关键点 3: 退出程序时不保存 ---
+                # SaveOptions: 1 = btDoNotSaveChanges
+                self.bt_app.Quit(1) 
             except:
                 pass
