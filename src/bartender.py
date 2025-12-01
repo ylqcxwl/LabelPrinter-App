@@ -1,30 +1,29 @@
+# src/bartender.py
 import win32com.client
 import os
 from src.database import Database
 
 class BartenderPrinter:
-    # 接收 Database 实例，虽然在 __init__ 中 db 没有用到，但为了遵循依赖注入原则，保持传入
-    def __init__(self, db):
-        self.db = db 
-        self.bt_app = None # 启动时不再实例化 BarTender
+    # 修复点：接受一个可选的 db_instance 参数
+    def __init__(self, db_instance=None): 
+        # 如果传入了 db 实例，则使用它；否则，自行初始化一个
+        # 这样确保了在 MainWindow 或 Page 中创建的 db 实例能够被复用
+        self.db = db_instance if db_instance else Database() 
+        self.bt_app = None
+        try:
+            self.bt_app = win32com.client.Dispatch("BarTender.Application")
+            self.bt_app.Visible = False
+        except Exception as e:
+            print(f"Bartender Init Error: {e}")
 
-    def _ensure_app_running(self):
-        """确保 BarTender 实例已启动并可用，如果未启动则尝试启动。"""
-        if self.bt_app is None:
+    def print_label(self, template_path, data_map, printer_name=None):
+        # 检查 Bartender 实例
+        if not self.bt_app:
             try:
                 self.bt_app = win32com.client.Dispatch("BarTender.Application")
                 self.bt_app.Visible = False
-                return True
-            except Exception as e:
-                print(f"Bartender Init Error (Lazy): {e}")
-                return False
-        return True
-
-    def print_label(self, template_path, data_map, printer_name=None):
-        # --- 优化点：懒加载 BarTender 进程 ---
-        # 只有在需要打印时才启动 BarTender
-        if not self._ensure_app_running():
-            return False, "Bartender未安装或无法启动"
+            except:
+                return False, "Bartender未安装或无法启动"
 
         if not os.path.exists(template_path):
             return False, f"找不到模板文件: {template_path}"
@@ -37,7 +36,6 @@ class BartenderPrinter:
             bt_format = self.bt_app.Formats.Open(template_path, True, "")
             
             # --- 设置默认打印机 ---
-            # 由于 db 是从外部传入的，所以需要确保它有一个获取配置的方法
             target_printer = self.db.get_setting('default_printer')
             if target_printer and target_printer != "使用系统默认打印机":
                 bt_format.Printer = target_printer
@@ -74,8 +72,6 @@ class BartenderPrinter:
     def quit(self):
         if self.bt_app:
             try:
-                # --- 修复关键点 3: 退出程序时不保存 ---
-                # SaveOptions: 1 = btDoNotSaveChanges
-                self.bt_app.Quit(1) 
+                self.bt_app.Quit()
             except:
                 pass
