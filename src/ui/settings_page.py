@@ -1,185 +1,446 @@
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
-                             QTableWidgetItem, QPushButton, QHeaderView, 
-                             QDialog, QFormLayout, QLineEdit, QSpinBox, 
-                             QFileDialog, QMessageBox, QComboBox, QAbstractItemView)
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLineEdit, QPushButton, 
+                             QMessageBox, QTextEdit, QGroupBox, QHBoxLayout, 
+                             QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+                             QTabWidget, QLabel, QFileDialog, QComboBox, QSpinBox)
 from PyQt5.QtCore import Qt
+# --- 新增导入：用于获取打印机信息 ---
+from PyQt5.QtPrintSupport import QPrinterInfo 
+# -----------------------------------
 from src.database import Database
-import pandas as pd
+from src.config import DEFAULT_MAPPING
+import json
 import os
 
-class ProductPage(QWidget):
+class SettingsPage(QWidget):
     def __init__(self):
         super().__init__()
         self.db = Database()
-        self.layout = QVBoxLayout(self)
-        
-        # Toolbar
-        toolbar = QHBoxLayout()
-        self.btn_add = QPushButton("新增产品"); self.btn_add.clicked.connect(self.add_product)
-        self.btn_edit = QPushButton("修改选中"); self.btn_edit.clicked.connect(self.edit_product)
-        self.btn_del = QPushButton("删除选中"); self.btn_del.clicked.connect(self.delete_product)
-        self.btn_imp = QPushButton("导入Excel"); self.btn_imp.clicked.connect(self.import_data)
-        self.btn_exp = QPushButton("导出Excel"); self.btn_exp.clicked.connect(self.export_data)
-        for b in [self.btn_add, self.btn_edit, self.btn_del, self.btn_imp, self.btn_exp]: toolbar.addWidget(b)
-        toolbar.addStretch()
-        self.layout.addLayout(toolbar)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Table
-        self.table = QTableWidget()
-        # ID, Name, Spec, Model, Color, SN4, SKU, 69, Qty, Weight, Tmpl, BoxRule, SNRule
-        self.table.setColumnCount(13)
-        self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "型号", "颜色", "SN前4", "SKU", "69码", "数量", "重量", "模板名称", "箱规ID", "SN规ID"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers) 
-        self.table.doubleClicked.connect(self.edit_product)
+        self.tabs = QTabWidget()
         
-        self.table.hideColumn(0); self.table.hideColumn(11); self.table.hideColumn(12)
-        self.layout.addWidget(self.table)
+        # 1. 箱号规则
+        self.tab_rules = QWidget()
+        self.init_rules_tab()
+        self.tabs.addTab(self.tab_rules, "1. 箱号规则")
 
+        # 2. SN规则
+        self.tab_sn = QWidget()
+        self.init_sn_tab()
+        self.tabs.addTab(self.tab_sn, "2. SN规则")
+
+        # 3. 字段映射
+        self.tab_map = QWidget()
+        self.init_map_tab()
+        self.tabs.addTab(self.tab_map, "3. 字段映射")
+        
+        # 4. 系统维护
+        self.tab_sys = QWidget()
+        self.init_sys_tab()
+        self.tabs.addTab(self.tab_sys, "4. 系统维护")
+        
+        main_layout.addWidget(self.tabs)
+        
         self.refresh_data()
 
-    def refresh_data(self):
-        self.table.setRowCount(0)
-        try:
-            cursor = self.db.conn.cursor()
-            cursor.execute("SELECT * FROM products ORDER BY id DESC")
-            for r_idx, row in enumerate(cursor.fetchall()):
-                self.table.insertRow(r_idx)
-                for c_idx, val in enumerate(row):
-                    disp = str(val)
-                    if c_idx == 10 and val: disp = os.path.basename(val)
-                    item = QTableWidgetItem(disp)
-                    item.setData(Qt.UserRole, val)
-                    self.table.setItem(r_idx, c_idx, item)
-        except Exception as e: print(f"Refresh error: {e}")
-
-    def add_product(self):
-        dlg = ProductDialog(self)
-        if dlg.exec_():
-            d = dlg.get_data()
-            try:
-                sql = '''INSERT INTO products (name, spec, model, color, sn4, sku, code69, qty, weight, template_path, rule_id, sn_rule_id) 
-                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'''
-                self.db.cursor.execute(sql, d)
-                self.db.conn.commit(); self.refresh_data()
-                QMessageBox.information(self, "成功", "已添加")
-            except Exception as e:
-                msg = "SN前4位已存在" if "UNIQUE constraint" in str(e) else str(e)
-                QMessageBox.critical(self, "错误", msg)
-
-    def edit_product(self):
-        r = self.table.currentRow()
-        if r < 0: return
-        pid = self.table.item(r, 0).text()
-        cursor = self.db.conn.cursor(); cursor.execute("SELECT * FROM products WHERE id=?", (pid,))
-        row = cursor.fetchone()
-        if not row: return
-
-        dlg = ProductDialog(self, row)
-        if dlg.exec_():
-            d = dlg.get_data() + (pid,)
-            try:
-                sql = '''UPDATE products SET name=?, spec=?, model=?, color=?, sn4=?, sku=?, code69=?, qty=?, weight=?, template_path=?, rule_id=?, sn_rule_id=?
-                         WHERE id=?'''
-                self.db.cursor.execute(sql, d)
-                self.db.conn.commit(); self.refresh_data()
-                QMessageBox.information(self, "成功", "已修改")
-            except Exception as e: QMessageBox.critical(self, "错误", str(e))
-
-    def delete_product(self):
-        r = self.table.currentRow()
-        if r >= 0:
-            pid = self.table.item(r, 0).text()
-            if QMessageBox.question(self,"确认","删除?",QMessageBox.Yes)==QMessageBox.Yes:
-                self.db.cursor.execute("DELETE FROM products WHERE id=?", (pid,))
-                self.db.conn.commit(); self.refresh_data()
-
-    def import_data(self):
-        p, _ = QFileDialog.getOpenFileName(self, "导入", "", "Excel (*.xlsx *.xls)")
-        if not p: return
-        try:
-            df = pd.read_excel(p)
-            if 'name' not in df.columns or 'sn4' not in df.columns: return QMessageBox.warning(self,"错","缺列")
-            s, f = 0, 0
-            for _, r in df.iterrows():
-                try:
-                    val = (
-                        str(r['name']), str(r.get('spec','')), str(r.get('model','')), str(r.get('color','')), 
-                        str(r['sn4']), str(r.get('sku','')), str(r.get('code69','')), int(r.get('qty',1)), 
-                        str(r.get('weight','')), str(r.get('template_path','')), int(r.get('rule_id',0)), int(r.get('sn_rule_id',0))
-                    )
-                    self.db.cursor.execute('''INSERT INTO products (name, spec, model, color, sn4, sku, code69, qty, weight, template_path, rule_id, sn_rule_id) 
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''', val)
-                    s += 1
-                except: f += 1
-            self.db.conn.commit(); self.refresh_data()
-            QMessageBox.information(self, "结果", f"成功: {s}, 失败: {f}")
-        except Exception as e: QMessageBox.critical(self, "错", str(e))
-
-    def export_data(self):
-        p, _ = QFileDialog.getSaveFileName(self, "导出", "products.xlsx", "Excel (*.xlsx)")
-        if p: pd.read_sql_query("SELECT * FROM products", self.db.conn).to_excel(p, index=False); QMessageBox.information(self,"好","成功")
-
-class ProductDialog(QDialog):
-    def __init__(self, parent=None, data=None):
-        super().__init__(parent)
-        self.setWindowTitle("产品编辑")
-        self.layout = QFormLayout(self)
-        self.db = Database()
-        self.inputs = {}
+    # ================= 1. 箱号规则 =================
+    def init_rules_tab(self):
+        layout = QVBoxLayout(self.tab_rules)
         
-        # 字段定义 (Name, DB Index)
-        f_map = [("名称",1), ("规格",2), ("型号",3), ("颜色",4), ("SN前4(唯一)",5), ("SKU",6), ("69码",7), ("重量",9)]
-        for lbl, idx in f_map:
-            le = QLineEdit()
-            if data: le.setText(str(data[idx]) if data[idx] else "")
-            self.layout.addRow(lbl, le)
-            self.inputs[lbl] = le
-            
-        self.spin_qty = QSpinBox(); self.spin_qty.setRange(1,9999)
-        if data: self.spin_qty.setValue(data[8])
-        self.layout.addRow("每箱数量", self.spin_qty)
+        # 说明
+        info = QTextEdit()
+        info.setReadOnly(True)
+        info.setMaximumHeight(160)
+        info.setHtml("""
+        <h4>📦 箱号规则编写说明</h4>
+        <ul>
+        <li><code>{SN4}</code>: SN前4位</li>
+        <li><code>{Y1}/{Y2}</code>: 年1位/2位 (2025->5/25)</li>
+        <li><code>{M1}</code>: 月代码 (1-9, A, B, C)</li>
+        <li><code>{MM}/{DD}</code>: 月/日 (01-12, 01-31)</li>
+        <li><code>{SEQn}</code>: <b>n位流水号</b> (自动累计, 每月重置)</li>
+        </ul>
+        <p>示例: <code>MZXH{SN4}{Y1}{M1}{SEQ5}</code></p>
+        """)
+        layout.addWidget(info)
+        
+        # 编辑
+        h_layout = QHBoxLayout()
+        self.box_name_edit = QLineEdit()
+        self.box_name_edit.setPlaceholderText("规则名称")
+        self.box_fmt_edit = QLineEdit()
+        self.box_fmt_edit.setPlaceholderText("格式")
+        
+        btn_add = QPushButton("添加")
+        btn_add.clicked.connect(self.add_box_rule)
+        btn_upd = QPushButton("修改选中")
+        btn_upd.clicked.connect(self.update_box_rule)
+        
+        h_layout.addWidget(QLabel("名称:"))
+        h_layout.addWidget(self.box_name_edit)
+        h_layout.addWidget(QLabel("格式:"))
+        h_layout.addWidget(self.box_fmt_edit)
+        h_layout.addWidget(btn_add)
+        h_layout.addWidget(btn_upd)
+        layout.addLayout(h_layout)
+        
+        # 表格
+        self.table_box = QTableWidget()
+        self.table_box.setColumnCount(3)
+        self.table_box.setHorizontalHeaderLabels(["ID", "名称", "格式"])
+        self.table_box.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table_box.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_box.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table_box.itemClicked.connect(self.on_box_table_click)
+        layout.addWidget(self.table_box)
+        
+        btn_del = QPushButton("删除选中")
+        btn_del.clicked.connect(self.delete_box_rule)
+        layout.addWidget(btn_del)
+        
+        self.current_box_id = None
 
-        self.tmpl_le = QLineEdit(); self.tmpl_le.setReadOnly(True)
-        if data and data[10]: self.tmpl_le.setText(os.path.basename(data[10])); self.full_tmpl = data[10]
-        else: self.full_tmpl = ""
-        b_tmpl = QPushButton("选模板"); b_tmpl.clicked.connect(self.sel_tmpl)
-        h = QHBoxLayout(); h.addWidget(self.tmpl_le); h.addWidget(b_tmpl)
-        self.layout.addRow("打印模板", h)
+    def load_box_rules(self):
+        self.table_box.setRowCount(0)
+        cursor = self.db.conn.cursor()
+        cursor.execute("SELECT id, name, rule_string FROM box_rules")
+        for r_idx, row in enumerate(cursor.fetchall()):
+            self.table_box.insertRow(r_idx)
+            self.table_box.setItem(r_idx, 0, QTableWidgetItem(str(row[0])))
+            self.table_box.setItem(r_idx, 1, QTableWidgetItem(str(row[1])))
+            self.table_box.setItem(r_idx, 2, QTableWidgetItem(str(row[2])))
 
-        # Box Rule
-        self.cb_box = QComboBox(); self.cb_box.addItem("无", 0)
-        self.db.cursor.execute("SELECT id, name FROM box_rules")
-        for r in self.db.cursor.fetchall(): self.cb_box.addItem(r[1], r[0])
-        if data: idx = self.cb_box.findData(data[11]); self.cb_box.setCurrentIndex(idx if idx>=0 else 0)
-        self.layout.addRow("箱号规则", self.cb_box)
+    def add_box_rule(self):
+        name = self.box_name_edit.text().strip()
+        fmt = self.box_fmt_edit.text().strip()
+        if not name or not fmt: return
+        try:
+            self.db.cursor.execute("INSERT INTO box_rules (name, rule_string) VALUES (?,?)", (name, fmt))
+            self.db.conn.commit()
+            self.load_box_rules()
+            self.box_name_edit.clear()
+            self.box_fmt_edit.clear()
+        except Exception as e:
+            QMessageBox.warning(self, "错误", str(e))
 
-        # SN Rule (New)
-        self.cb_sn = QComboBox(); self.cb_sn.addItem("无", 0)
-        self.db.cursor.execute("SELECT id, name FROM sn_rules")
-        for r in self.db.cursor.fetchall(): self.cb_sn.addItem(r[1], r[0])
-        if data: 
-            # data[12] 是 sn_rule_id，如果数据库结构刚变，可能需要 try/except 处理旧数据
+    def update_box_rule(self):
+        if not self.current_box_id: return
+        try:
+            self.db.cursor.execute("UPDATE box_rules SET name=?, rule_string=? WHERE id=?", 
+                                   (self.box_name_edit.text(), self.box_fmt_edit.text(), self.current_box_id))
+            self.db.conn.commit()
+            self.load_box_rules()
+        except Exception as e:
+            QMessageBox.warning(self, "错误", str(e))
+
+    def delete_box_rule(self):
+        row = self.table_box.currentRow()
+        if row >= 0:
+            rid = self.table_box.item(row, 0).text()
+            self.db.cursor.execute("DELETE FROM box_rules WHERE id=?", (rid,))
+            self.db.conn.commit()
+            self.load_box_rules()
+
+    def on_box_table_click(self, item):
+        row = item.row()
+        self.current_box_id = self.table_box.item(row, 0).text()
+        self.box_name_edit.setText(self.table_box.item(row, 1).text())
+        self.box_fmt_edit.setText(self.table_box.item(row, 2).text())
+
+    # ================= 2. SN规则 =================
+    def init_sn_tab(self):
+        layout = QVBoxLayout(self.tab_sn)
+        
+        info = QTextEdit()
+        info.setReadOnly(True)
+        info.setMaximumHeight(150)
+        info.setHtml("""
+        <h4>🔢 SN校验规则说明</h4>
+        <ul>
+        <li><code>{SN4}</code>: 匹配SN前4位</li>
+        <li><code>{BATCH}</code>: 匹配批次号(0-9)</li>
+        <li><code>{SEQn}</code>: 匹配n位数字 (如 {SEQ7})</li>
+        <li>固定字符: 如 / - A</li>
+        </ul>
+        <p>示例: <code>{SN4}/2{BATCH}{SEQ7}</code></p>
+        """)
+        layout.addWidget(info)
+        
+        h_layout = QHBoxLayout()
+        self.sn_name_edit = QLineEdit()
+        self.sn_name_edit.setPlaceholderText("规则名称")
+        self.sn_fmt_edit = QLineEdit()
+        self.sn_fmt_edit.setPlaceholderText("格式")
+        self.sn_len_spin = QSpinBox()
+        self.sn_len_spin.setRange(0, 99)
+        
+        btn_add = QPushButton("添加")
+        btn_add.clicked.connect(self.add_sn_rule)
+        btn_upd = QPushButton("修改")
+        btn_upd.clicked.connect(self.update_sn_rule)
+        
+        h_layout.addWidget(QLabel("名称:"))
+        h_layout.addWidget(self.sn_name_edit)
+        h_layout.addWidget(QLabel("格式:"))
+        h_layout.addWidget(self.sn_fmt_edit)
+        h_layout.addWidget(QLabel("长度(0不限):"))
+        h_layout.addWidget(self.sn_len_spin)
+        h_layout.addWidget(btn_add)
+        h_layout.addWidget(btn_upd)
+        layout.addLayout(h_layout)
+        
+        self.table_sn = QTableWidget()
+        self.table_sn.setColumnCount(4)
+        self.table_sn.setHorizontalHeaderLabels(["ID", "名称", "格式", "长度"])
+        self.table_sn.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table_sn.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_sn.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table_sn.itemClicked.connect(self.on_sn_table_click)
+        layout.addWidget(self.table_sn)
+        
+        btn_del = QPushButton("删除选中")
+        btn_del.clicked.connect(self.delete_sn_rule)
+        layout.addWidget(btn_del)
+        
+        self.current_sn_id = None
+
+    def load_sn_rules(self):
+        self.table_sn.setRowCount(0)
+        cursor = self.db.conn.cursor()
+        cursor.execute("SELECT id, name, rule_string, length FROM sn_rules")
+        for r_idx, row in enumerate(cursor.fetchall()):
+            self.table_sn.insertRow(r_idx)
+            for c_idx, val in enumerate(row):
+                self.table_sn.setItem(r_idx, c_idx, QTableWidgetItem(str(val)))
+
+    def add_sn_rule(self):
+        name = self.sn_name_edit.text()
+        fmt = self.sn_fmt_edit.text()
+        length = self.sn_len_spin.value()
+        if not name or not fmt: return
+        try:
+            self.db.cursor.execute("INSERT INTO sn_rules (name, rule_string, length) VALUES (?,?,?)", (name, fmt, length))
+            self.db.conn.commit()
+            self.load_sn_rules()
+            self.sn_name_edit.clear()
+            self.sn_fmt_edit.clear()
+        except Exception as e:
+            QMessageBox.warning(self, "错误", str(e))
+
+    def update_sn_rule(self):
+        if not self.current_sn_id: return
+        try:
+            self.db.cursor.execute("UPDATE sn_rules SET name=?, rule_string=?, length=? WHERE id=?", 
+                                   (self.sn_name_edit.text(), self.sn_fmt_edit.text(), self.sn_len_spin.value(), self.current_sn_id))
+            self.db.conn.commit()
+            self.load_sn_rules()
+        except Exception as e:
+            QMessageBox.warning(self, "错误", str(e))
+
+    def delete_sn_rule(self):
+        row = self.table_sn.currentRow()
+        if row >= 0:
+            rid = self.table_sn.item(row, 0).text()
+            self.db.cursor.execute("DELETE FROM sn_rules WHERE id=?", (rid,))
+            self.db.conn.commit()
+            self.load_sn_rules()
+
+    def on_sn_table_click(self, item):
+        row = item.row()
+        self.current_sn_id = self.table_sn.item(row, 0).text()
+        self.sn_name_edit.setText(self.table_sn.item(row, 1).text())
+        self.sn_fmt_edit.setText(self.table_sn.item(row, 2).text())
+        self.sn_len_spin.setValue(int(self.table_sn.item(row, 3).text()))
+
+    # ================= 3. 字段映射 =================
+    def init_map_tab(self):
+        layout = QVBoxLayout(self.tab_map)
+        self.table_map = QTableWidget()
+        self.table_map.setColumnCount(2)
+        self.table_map.setHorizontalHeaderLabels(["数据库源字段", "模板变量名"])
+        self.table_map.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.table_map)
+        
+        h_layout = QHBoxLayout()
+        b_add = QPushButton("增加")
+        b_add.clicked.connect(self.add_map_row)
+        b_del = QPushButton("删除")
+        b_del.clicked.connect(self.del_map_row)
+        b_save = QPushButton("保存配置")
+        b_save.clicked.connect(self.save_map)
+        h_layout.addWidget(b_add)
+        h_layout.addWidget(b_del)
+        h_layout.addStretch()
+        h_layout.addWidget(b_save)
+        layout.addLayout(h_layout)
+
+    def load_map(self):
+        self.table_map.setRowCount(0)
+        mapping = self.db.get_setting('field_mapping')
+        if isinstance(mapping, str):
             try:
-                idx = self.cb_sn.findData(data[12])
-                self.cb_sn.setCurrentIndex(idx if idx>=0 else 0)
-            except: pass
-        self.layout.addRow("SN校验规则", self.cb_sn)
+                mapping = json.loads(mapping)
+            except json.JSONDecodeError:
+                mapping = DEFAULT_MAPPING
+        if not isinstance(mapping, dict): mapping = DEFAULT_MAPPING
+        for k, v in mapping.items():
+            self.add_map_row(k, v)
 
-        btn = QPushButton("保存"); btn.clicked.connect(self.accept)
-        self.layout.addRow(btn)
+    def add_map_row(self, key=None, val=""):
+        row = self.table_map.rowCount()
+        self.table_map.insertRow(row)
+        
+        cb = QComboBox()
+        items = [("name","名称"),("spec","规格"),("model","型号"),("color","颜色"),
+                 ("sn4","SN前4"),("sku","SKU"),("code69","69码"),("qty","数量"),
+                 ("weight","重量"),("box_no","箱号"),("prod_date","日期")]
+        for k, l in items:
+            cb.addItem(f"{l} ({k})", k)
+        
+        if key:
+            idx = cb.findData(key)
+            if idx >= 0: cb.setCurrentIndex(idx)
+            
+        self.table_map.setCellWidget(row, 0, cb)
+        self.table_map.setCellWidget(row, 1, QLineEdit(str(val)))
 
-    def sel_tmpl(self):
-        root = self.db.get_setting('template_root')
-        p, _ = QFileDialog.getOpenFileName(self, "模板", root, "*.btw")
-        if p: self.tmpl_le.setText(os.path.basename(p)); self.full_tmpl = os.path.basename(p)
+    def del_map_row(self):
+        self.table_map.removeRow(self.table_map.currentRow())
 
-    def get_data(self):
-        return (
-            self.inputs["名称"].text(), self.inputs["规格"].text(), self.inputs["型号"].text(), self.inputs["颜色"].text(),
-            self.inputs["SN前4(唯一)"].text(), self.inputs["SKU"].text(), self.inputs["69码"].text(),
-            self.spin_qty.value(), self.inputs["重量"].text(), self.full_tmpl,
-            self.cb_box.currentData(), self.cb_sn.currentData()
-      )
+    def save_map(self):
+        m = {}
+        for i in range(self.table_map.rowCount()):
+            c = self.table_map.cellWidget(i, 0)
+            l = self.table_map.cellWidget(i, 1)
+            if c and l and l.text().strip():
+                m[c.currentData()] = l.text().strip()
+        self.db.set_setting('field_mapping', json.dumps(m))
+        self.db.conn.commit()
+        QMessageBox.information(self, "成功", "映射保存成功")
+
+    # ================= 4. 系统维护 =================
+    def get_available_printers(self):
+        """获取系统上所有可用的打印机名称列表。"""
+        # 使用 QPrinterInfo 获取打印机列表
+        printers = [info.printerName() for info in QPrinterInfo.availablePrinters()]
+        # 确保列表中包含一个“使用系统默认”的选项，并放在第一位
+        printers.insert(0, "使用系统默认打印机")
+        return printers
+
+    def init_sys_tab(self):
+        layout = QVBoxLayout(self.tab_sys)
+        
+        # 模板路径
+        g1 = QGroupBox("模板根目录")
+        l1 = QHBoxLayout(g1)
+        self.path_tmpl_edit = QLineEdit()
+        self.path_tmpl_edit.setReadOnly(True)
+        b1 = QPushButton("选择")
+        b1.clicked.connect(self.sel_tmpl_path)
+        l1.addWidget(self.path_tmpl_edit)
+        l1.addWidget(b1)
+        layout.addWidget(g1)
+
+        # --- 新增：默认打印机设置 ---
+        g_printer = QGroupBox("默认打印机")
+        l_printer = QHBoxLayout(g_printer)
+        self.combo_printer = QComboBox()
+        self.combo_printer.addItems(self.get_available_printers())
+        
+        btn_save_printer = QPushButton("保存设置")
+        btn_save_printer.clicked.connect(self.sel_default_printer)
+        
+        l_printer.addWidget(self.combo_printer)
+        l_printer.addWidget(btn_save_printer)
+        l_printer.setStretchFactor(self.combo_printer, 1)
+        layout.addWidget(g_printer)
+        # ----------------------------
+        
+        # 备份路径
+        g2 = QGroupBox("备份目录")
+        l2 = QHBoxLayout(g2)
+        self.path_bk_edit = QLineEdit()
+        self.path_bk_edit.setReadOnly(True)
+        b2 = QPushButton("选择")
+        b2.clicked.connect(self.sel_bk_path)
+        l2.addWidget(self.path_bk_edit)
+        l2.addWidget(b2)
+        layout.addWidget(g2)
+        
+        # 按钮
+        g3 = QGroupBox("操作")
+        l3 = QHBoxLayout(g3)
+        b3 = QPushButton("立即备份")
+        b3.clicked.connect(self.do_backup)
+        b4 = QPushButton("从文件恢复")
+        b4.clicked.connect(self.do_restore)
+        l3.addWidget(b3)
+        l3.addWidget(b4)
+        layout.addWidget(g3)
+        
+        layout.addStretch()
+
+    def load_sys_paths(self):
+        p1 = self.db.get_setting('template_root')
+        if p1: self.path_tmpl_edit.setText(p1)
+        
+        p2 = self.db.get_setting('backup_path')
+        if p2: self.path_bk_edit.setText(p2)
+
+    def load_default_printer(self):
+        """加载默认打印机设置。"""
+        default_printer_name = self.db.get_setting('default_printer')
+        if default_printer_name:
+            index = self.combo_printer.findText(default_printer_name)
+            if index >= 0:
+                self.combo_printer.setCurrentIndex(index)
+            else:
+                # 如果数据库中的打印机不在当前列表中，则默认选中第一个
+                self.combo_printer.setCurrentIndex(0)
+        else:
+            self.combo_printer.setCurrentIndex(0)
+
+    def sel_tmpl_path(self):
+        p = QFileDialog.getExistingDirectory(self, "选择模板根目录")
+        if p:
+            self.db.set_setting('template_root', p)
+            self.db.conn.commit()
+            self.path_tmpl_edit.setText(p)
+            QMessageBox.information(self, "成功", "模板根目录设置成功！")
+
+    def sel_bk_path(self):
+        p = QFileDialog.getExistingDirectory(self, "选择备份目录")
+        if p:
+            self.db.set_setting('backup_path', p)
+            self.db.conn.commit()
+            self.path_bk_edit.setText(p)
+            QMessageBox.information(self, "成功", "备份目录设置成功！")
+
+    def sel_default_printer(self):
+        """保存用户选择的默认打印机。"""
+        selected_printer = self.combo_printer.currentText()
+        self.db.set_setting('default_printer', selected_printer)
+        self.db.conn.commit()
+        QMessageBox.information(self, "成功", f"默认打印机已设置为: {selected_printer}")
+
+    def do_backup(self):
+        # 确保路径已保存并提交
+        self.db.conn.commit() 
+        ok, msg = self.db.backup_db()
+        QMessageBox.information(self, "结果", msg)
+
+    def do_restore(self):
+        p, _ = QFileDialog.getOpenFileName(self, "选择数据库", "", "DB (*.db)")
+        if p:
+            if QMessageBox.warning(self, "警告", "恢复将覆盖当前数据，确定？", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                ok, msg = self.db.restore_db(p)
+                QMessageBox.information(self, "结果", msg)
+
+    # ================= 全局刷新 =================
+    def refresh_data(self):
+        self.load_box_rules()
+        self.load_sn_rules()
+        self.load_map()
+        self.load_sys_paths()
+        self.load_default_printer() # --- 新增调用 ---
