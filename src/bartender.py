@@ -1,13 +1,11 @@
-# src/bartender.py
 import win32com.client
 import os
 from src.database import Database
 
 class BartenderPrinter:
-    # 修复点：接受一个可选的 db_instance 参数
+    # 【重要修改点】接受一个可选的 db_instance 参数
     def __init__(self, db_instance=None): 
         # 如果传入了 db 实例，则使用它；否则，自行初始化一个
-        # 这样确保了在 MainWindow 或 Page 中创建的 db 实例能够被复用
         self.db = db_instance if db_instance else Database() 
         self.bt_app = None
         try:
@@ -56,7 +54,7 @@ class BartenderPrinter:
             # --- 修复关键点 2: 强制不保存 ---
             # CloseOptions 枚举: 
             # 0 = btSaveChanges (保存)
-            # 1 = btDoNotSaveChanges (不保存) <--- 修改为 1
+            # 1 = btDoNotSaveChanges (不保存) <--- 强制设置为 1
             # 2 = btPromptSaveChanges (询问)
             bt_format.Close(1) 
             
