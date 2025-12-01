@@ -3,23 +3,28 @@ import os
 from src.database import Database
 
 class BartenderPrinter:
-    def __init__(self):
-        self.db = Database() # 初始化数据库连接
-        self.bt_app = None
-        try:
-            self.bt_app = win32com.client.Dispatch("BarTender.Application")
-            self.bt_app.Visible = False
-        except Exception as e:
-            print(f"Bartender Init Error: {e}")
+    # 接收 Database 实例，虽然在 __init__ 中 db 没有用到，但为了遵循依赖注入原则，保持传入
+    def __init__(self, db):
+        self.db = db 
+        self.bt_app = None # 启动时不再实例化 BarTender
 
-    def print_label(self, template_path, data_map, printer_name=None):
-        # 检查 Bartender 实例
-        if not self.bt_app:
+    def _ensure_app_running(self):
+        """确保 BarTender 实例已启动并可用，如果未启动则尝试启动。"""
+        if self.bt_app is None:
             try:
                 self.bt_app = win32com.client.Dispatch("BarTender.Application")
                 self.bt_app.Visible = False
-            except:
-                return False, "Bartender未安装或无法启动"
+                return True
+            except Exception as e:
+                print(f"Bartender Init Error (Lazy): {e}")
+                return False
+        return True
+
+    def print_label(self, template_path, data_map, printer_name=None):
+        # --- 优化点：懒加载 BarTender 进程 ---
+        # 只有在需要打印时才启动 BarTender
+        if not self._ensure_app_running():
+            return False, "Bartender未安装或无法启动"
 
         if not os.path.exists(template_path):
             return False, f"找不到模板文件: {template_path}"
@@ -32,6 +37,7 @@ class BartenderPrinter:
             bt_format = self.bt_app.Formats.Open(template_path, True, "")
             
             # --- 设置默认打印机 ---
+            # 由于 db 是从外部传入的，所以需要确保它有一个获取配置的方法
             target_printer = self.db.get_setting('default_printer')
             if target_printer and target_printer != "使用系统默认打印机":
                 bt_format.Printer = target_printer
