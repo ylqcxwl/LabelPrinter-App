@@ -1,3 +1,4 @@
+# src/ui/history_page.py
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QPushButton, QHBoxLayout, 
                              QTableWidgetItem, QLineEdit, QHeaderView, QAbstractItemView, 
                              QMessageBox, QDateEdit, QCheckBox, QFileDialog, QLabel)
@@ -9,12 +10,11 @@ import datetime
 import os
 
 class HistoryPage(QWidget):
-    # --- 优化点：接收 Database 实例 ---
-    def __init__(self, db: Database):
+    def __init__(self):
         super().__init__()
         try:
-            self.db = db # 使用传入的共享实例
-            # BartenderPrinter 需要 db 实例
+            self.db = Database()
+            # 【重要修改点】将 self.db 实例传递给 BartenderPrinter
             self.printer = BartenderPrinter(self.db) 
             self.init_ui()
             self.load()
@@ -40,21 +40,20 @@ class HistoryPage(QWidget):
         self.date_start.setDisplayFormat("yyyy-MM-dd")
         self.date_start.dateChanged.connect(self.load)
         
-        self.date_end = QDateEdit(QDate.currentDate())
+        self.date_end = QDateEdit(QDate.currentDate().addDays(1)) # 默认包含今天
         self.date_end.setCalendarPopup(True)
         self.date_end.setDisplayFormat("yyyy-MM-dd")
         self.date_end.dateChanged.connect(self.load)
         
-        self.btn_search = QPushButton("搜索")
+        self.btn_search = QPushButton("搜索 / 刷新")
         self.btn_search.clicked.connect(self.load)
 
-        self.btn_del = QPushButton("删除选中")
-        self.btn_del.clicked.connect(self.delete_records)
+        self.btn_export = QPushButton("导出 Excel")
+        self.btn_export.clicked.connect(self.export_records)
 
-        self.btn_exp = QPushButton("导出Excel")
-        self.btn_exp.clicked.connect(self.export_data)
-
-        h_layout.addWidget(QLabel("搜索:"))
+        self.btn_delete = QPushButton("删除选中")
+        self.btn_delete.clicked.connect(self.delete_records)
+        
         h_layout.addWidget(self.search_input)
         h_layout.addWidget(self.chk_date)
         h_layout.addWidget(self.date_start)
@@ -62,62 +61,73 @@ class HistoryPage(QWidget):
         h_layout.addWidget(self.date_end)
         h_layout.addWidget(self.btn_search)
         h_layout.addStretch()
-        h_layout.addWidget(self.btn_del)
-        h_layout.addWidget(self.btn_exp)
+        h_layout.addWidget(self.btn_export)
+        h_layout.addWidget(self.btn_delete)
         
         layout.addLayout(h_layout)
 
         # --- 表格 ---
         self.table = QTableWidget()
-        self.table.setColumnCount(10)
-        self.table.setHorizontalHeaderLabels(["ID", "箱号", "箱内序号", "名称", "规格", "型号", "颜色", "69码", "SN", "打印时间"])
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setColumnCount(9)
+        self.table.setHorizontalHeaderLabels([
+            "ID", "箱号", "箱内序号", "产品名称", "规格", "型号", "69码", "SN码", "打印时间"
+        ])
+        
+        # 隐藏 ID 列
+        self.table.setColumnHidden(0, True)
+        
+        # 自动调整列宽
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Stretch) # SN码列拉伸
+        
+        # 整行选择
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        
+        # 只读
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        
         layout.addWidget(self.table)
         
-        self.table.setColumnHidden(0, True) # 隐藏 ID 列
-
     def load(self):
-        self.table.setRowCount(0)
-        
-        # 构造查询条件
-        where_clauses = []
-        params = []
-
-        search_text = self.search_input.text().strip()
-        if search_text:
-            where_clauses.append("(sn LIKE ? OR box_no LIKE ?)")
-            params.extend([f"%{search_text}%", f"%{search_text}%"])
-
-        if self.chk_date.isChecked():
-            start_date = self.date_start.date().toString("yyyy-MM-dd")
-            end_date = self.date_end.date().toString("yyyy-MM-dd")
-            where_clauses.append("print_date BETWEEN ? AND ?")
-            # 结束日期包含当天，所以查询到下一天的开始
-            params.extend([start_date, end_date + " 23:59:59"])
-
-        where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-        
-        # 执行查询
         try:
-            query = f"SELECT id, box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date FROM records {where_sql} ORDER BY print_date DESC"
+            self.table.setRowCount(0)
+            
+            query = "SELECT id, box_no, box_sn_seq, name, spec, model, code69, sn, print_date FROM records WHERE 1=1"
+            params = []
+            
+            # 搜索框筛选
+            search_text = self.search_input.text().strip()
+            if search_text:
+                query += " AND (sn LIKE ? OR box_no LIKE ?)"
+                params.append(f"%{search_text}%")
+                params.append(f"%{search_text}%")
+            
+            # 日期筛选
+            if self.chk_date.isChecked():
+                start_date = self.date_start.date().toString("yyyy-MM-dd") + " 00:00:00"
+                # 结束日期包含当天，所以加一天，然后查询 < next_day
+                end_date_dt = self.date_end.date().toPyDate() + datetime.timedelta(days=1)
+                end_date = end_date_dt.strftime("'%Y-%m-%d %H:%M:%S'") # SQL格式
+
+                query += f" AND print_date >= ? AND print_date < {end_date}"
+                params.append(start_date)
+            
+            query += " ORDER BY id DESC"
+            
             self.db.cursor.execute(query, params)
-            records = self.db.cursor.fetchall()
-
-            self.table.setRowCount(len(records))
-            for row_idx, data in enumerate(records):
-                for col_idx, item in enumerate(data):
+            rows = self.db.cursor.fetchall()
+            
+            self.table.setRowCount(len(rows))
+            
+            for row_idx, row_data in enumerate(rows):
+                for col_idx, item in enumerate(row_data):
                     self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(item)))
+                    
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"查询数据失败: {e}")
+            QMessageBox.critical(self, "错误", f"加载数据失败: {e}")
 
-    def refresh_data(self):
-        self.load()
-
-    def export_data(self):
+    def export_records(self):
         path, _ = QFileDialog.getSaveFileName(self, "导出", "print_history.xlsx", "Excel (*.xlsx)")
         if not path: return
         try:
@@ -140,11 +150,11 @@ class HistoryPage(QWidget):
             rows = set(i.row() for i in self.table.selectedIndexes())
             if not rows: return QMessageBox.warning(self, "提示", "未选中")
             ids = [self.table.item(r, 0).text() for r in rows]
-            if QMessageBox.question(self, "确认", f"删 {len(ids)} 条?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
-                p = ",".join(["?"] * len(ids))
+            if QMessageBox.question(self, "确认", f"删 {len(ids)} 条? (不可恢复)", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                p = ",".join("?" * len(ids))
                 self.db.cursor.execute(f"DELETE FROM records WHERE id IN ({p})", ids)
                 self.db.conn.commit()
-                QMessageBox.information(self, "成功", f"成功删除 {len(ids)} 条记录。")
-                self.load()
+                QMessageBox.information(self, "成功", f"成功删除 {len(ids)} 条记录")
+                self.load() # 重新加载数据
         except Exception as e:
             QMessageBox.critical(self, "错误", str(e))
