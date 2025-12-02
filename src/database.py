@@ -8,12 +8,24 @@ from src.config import DEFAULT_MAPPING
 class Database:
     def __init__(self, db_name='label_printer.db'):
         self.db_name = os.path.abspath(db_name)
-        self.conn = sqlite3.connect(self.db_name, check_same_thread=False) # 允许跨线程使用连接（需谨慎）
+        # check_same_thread=False 允许在后台线程中使用此连接进行查询
+        self.conn = sqlite3.connect(self.db_name, check_same_thread=False)
         
-        # --- 性能优化：开启 WAL 模式 ---
-        # Write-Ahead Logging 模式，极大提高并发读写速度，防止UI卡顿
+        # --- 核心性能优化区 ---
         try:
+            # 1. 开启 WAL (Write-Ahead Logging) 模式
+            # 作用：读写完全分离。当你在后台线程查询几百万条历史记录时，
+            # 前台依然可以毫秒级写入新的打印记录，互不阻塞。
             self.conn.execute("PRAGMA journal_mode=WAL;")
+            
+            # 2. 开启内存映射 (Memory-Mapped I/O)
+            # 作用：设置 256MB (268435456字节) 的内存映射。
+            # 当数据库文件很大（如几百MB）时，SQLite 会将其像内存一样直接访问，
+            # 极大减少磁盘 I/O，大幅提升百万级数据的读取速度。
+            self.conn.execute("PRAGMA mmap_size=268435456;")
+            
+            # 3. 同步模式设为 NORMAL
+            # 在 WAL 模式下安全且能大幅提升写入速度
             self.conn.execute("PRAGMA synchronous=NORMAL;")
         except:
             pass
@@ -54,8 +66,8 @@ class Database:
         self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS box_counters (key TEXT PRIMARY KEY, current_val INTEGER)')
         
-        # --- 性能优化：创建索引 ---
-        # 为常用查询字段创建索引，防止数据量大时查询变慢
+        # --- 索引优化：百万级数据查询的生命线 ---
+        # 即使有百万条数据，精确查找（如查重）配合索引依然是 0.00x 秒
         index_queries = [
             "CREATE INDEX IF NOT EXISTS idx_records_sn ON records (sn)",
             "CREATE INDEX IF NOT EXISTS idx_records_box_no ON records (box_no)",
@@ -106,15 +118,13 @@ class Database:
         try:
             td = custom_path if custom_path else self.get_setting('backup_path')
             if not os.path.exists(td): os.makedirs(td)
-            
-            # 自动备份时，如果今天已经备份过，可以跳过（可选逻辑，这里暂保留每次启动备份）
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             f = os.path.join(td, f"backup_{ts}.db")
             
             # 必须先 commit 确保 WAL 数据写入文件
             self.conn.commit()
             
-            # 使用 SQLite 专用的备份 API，比 shutil.copy 更安全
+            # 使用 SQLite 专用的 backup API，比文件复制更安全
             bck = sqlite3.connect(f)
             self.conn.backup(bck)
             bck.close()
@@ -131,7 +141,7 @@ class Database:
             shutil.copy2(path, self.db_name)
             self.conn = sqlite3.connect(self.db_name)
             
-            # 恢复后重新设置 WAL
+            # 恢复后重新开启 WAL
             try: self.conn.execute("PRAGMA journal_mode=WAL;")
             except: pass
             
@@ -140,7 +150,8 @@ class Database:
         except Exception as e: return False, str(e)
 
     def check_sn_exists(self, sn):
-        # 优化查询：利用索引并限制返回1条
+        # 优化：LIMIT 1 只要找到一个就立刻停止扫描，
+        # 在有索引的情况下，百万级数据查重也是毫秒级
         self.cursor.execute("SELECT 1 FROM records WHERE sn=? LIMIT 1", (sn,))
         return self.cursor.fetchone() is not None
 
@@ -148,7 +159,7 @@ class Database:
         key = f"P{product_id}_R{rule_id}_{year}_{month}_{repair_level}"
         self.cursor.execute("SELECT current_val FROM box_counters WHERE key=?", (key,))
         res = self.cursor.fetchone()
-        return res[0] if res else repair_level * 10000 
+        return res[0] if res else repair_level * 10000
 
     def increment_box_counter(self, product_id, rule_id, year, month, repair_level=0):
         key = f"P{product_id}_R{rule_id}_{year}_{month}_{repair_level}"
