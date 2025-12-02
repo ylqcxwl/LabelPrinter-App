@@ -8,12 +8,21 @@ from src.config import DEFAULT_MAPPING
 class Database:
     def __init__(self, db_name='label_printer.db'):
         self.db_name = os.path.abspath(db_name)
-        self.conn = sqlite3.connect(self.db_name)
+        self.conn = sqlite3.connect(self.db_name, check_same_thread=False) # 允许跨线程使用连接（需谨慎）
+        
+        # --- 性能优化：开启 WAL 模式 ---
+        # Write-Ahead Logging 模式，极大提高并发读写速度，防止UI卡顿
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL;")
+            self.conn.execute("PRAGMA synchronous=NORMAL;")
+        except:
+            pass
+            
         self.cursor = self.conn.cursor()
         self.setup_db()
 
     def setup_db(self):
-        # 表结构定义 (保持现有结构，只做检查)
+        # 表结构定义
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +54,19 @@ class Database:
         self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS box_counters (key TEXT PRIMARY KEY, current_val INTEGER)')
         
+        # --- 性能优化：创建索引 ---
+        # 为常用查询字段创建索引，防止数据量大时查询变慢
+        index_queries = [
+            "CREATE INDEX IF NOT EXISTS idx_records_sn ON records (sn)",
+            "CREATE INDEX IF NOT EXISTS idx_records_box_no ON records (box_no)",
+            "CREATE INDEX IF NOT EXISTS idx_records_print_date ON records (print_date)",
+            "CREATE INDEX IF NOT EXISTS idx_records_name ON records (name)",
+            "CREATE INDEX IF NOT EXISTS idx_products_name ON products (name)",
+            "CREATE INDEX IF NOT EXISTS idx_products_code69 ON products (code69)"
+        ]
+        for q in index_queries:
+            self.cursor.execute(q)
+
         # 字段检查补全
         self._check_and_add_column('products', 'rule_id', 'INTEGER DEFAULT 0')
         self._check_and_add_column('products', 'sn_rule_id', 'INTEGER DEFAULT 0')
@@ -80,13 +102,23 @@ class Database:
         self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         self.conn.commit()
 
-    def backup_db(self, custom_path=None):
+    def backup_db(self, custom_path=None, manual=True):
         try:
             td = custom_path if custom_path else self.get_setting('backup_path')
             if not os.path.exists(td): os.makedirs(td)
+            
+            # 自动备份时，如果今天已经备份过，可以跳过（可选逻辑，这里暂保留每次启动备份）
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             f = os.path.join(td, f"backup_{ts}.db")
-            self.conn.commit(); shutil.copy2(self.db_name, f)
+            
+            # 必须先 commit 确保 WAL 数据写入文件
+            self.conn.commit()
+            
+            # 使用 SQLite 专用的备份 API，比 shutil.copy 更安全
+            bck = sqlite3.connect(f)
+            self.conn.backup(bck)
+            bck.close()
+            
             return True, f"备份成功: {f}"
         except Exception as e: return False, str(e)
 
@@ -97,22 +129,26 @@ class Database:
             try: shutil.move(self.db_name, self.db_name+".old")
             except: pass
             shutil.copy2(path, self.db_name)
-            self.conn = sqlite3.connect(self.db_name); self.cursor = self.conn.cursor()
+            self.conn = sqlite3.connect(self.db_name)
+            
+            # 恢复后重新设置 WAL
+            try: self.conn.execute("PRAGMA journal_mode=WAL;")
+            except: pass
+            
+            self.cursor = self.conn.cursor()
             return True, "恢复成功，请重启"
         except Exception as e: return False, str(e)
 
     def check_sn_exists(self, sn):
-        self.cursor.execute("SELECT id FROM records WHERE sn=?", (sn,))
+        # 优化查询：利用索引并限制返回1条
+        self.cursor.execute("SELECT 1 FROM records WHERE sn=? LIMIT 1", (sn,))
         return self.cursor.fetchone() is not None
 
-    # --- 核心修改：计数器增加 product_id 参数 ---
     def get_box_counter(self, product_id, rule_id, year, month, repair_level=0):
-        # Key格式: P{prod_id}_R{rule_id}_{YYYY}_{MM}_{Repair}
-        # 确保每个产品单独计数
         key = f"P{product_id}_R{rule_id}_{year}_{month}_{repair_level}"
         self.cursor.execute("SELECT current_val FROM box_counters WHERE key=?", (key,))
         res = self.cursor.fetchone()
-        return res[0] if res else repair_level * 10000 # 初始值
+        return res[0] if res else repair_level * 10000 
 
     def increment_box_counter(self, product_id, rule_id, year, month, repair_level=0):
         key = f"P{product_id}_R{rule_id}_{year}_{month}_{repair_level}"
