@@ -9,10 +9,8 @@ import datetime
 import os
 import traceback
 
-# --- 核心修改：新增工作线程类 ---
-# 将耗时的数据库查询操作放到这里执行，防止主界面卡死
+# --- 数据库查询线程，防止界面卡顿 ---
 class SearchWorker(QThread):
-    # 定义信号：查询完成后，将结果列表传回主界面
     finished = pyqtSignal(list, str) # result_rows, error_msg
 
     def __init__(self, db_path, sql, params):
@@ -23,9 +21,7 @@ class SearchWorker(QThread):
 
     def run(self):
         try:
-            # 在线程中建立独立的只读连接，避免干扰主线程
             import sqlite3
-            # 使用 URI 模式打开只读连接，稍微更安全
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
             cursor = conn.cursor()
             cursor.execute(self.sql, self.params)
@@ -42,7 +38,6 @@ class HistoryPage(QWidget):
             self.db = Database()
             self.printer = BartenderPrinter()
             self.init_ui()
-            # 默认加载今天的数据，避免启动时全表扫描
             self.load()
         except Exception as e:
             print(f"History Init Error: {e}")
@@ -58,8 +53,6 @@ class HistoryPage(QWidget):
         self.search_input.setPlaceholderText("搜SN / 箱号 (支持模糊搜索)")
         self.search_input.returnPressed.connect(self.load)
         
-        # 默认勾选日期筛选，这是性能优化的关键！
-        # 如果不限制日期，百万级数据的 LIKE 查询会极慢
         self.chk_date = QCheckBox("日期筛选:")
         self.chk_date.setChecked(True) 
         self.chk_date.stateChanged.connect(self.load)
@@ -87,9 +80,9 @@ class HistoryPage(QWidget):
         self.btn_reprint.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold;")
         self.btn_reprint.clicked.connect(self.reprint_box)
 
-        btn_del = QPushButton("删除选中")
-        btn_del.setStyleSheet("color: red;")
-        btn_del.clicked.connect(self.delete_records)
+        self.btn_del = QPushButton("删除选中")
+        self.btn_del.setStyleSheet("color: red;")
+        self.btn_del.clicked.connect(self.delete_records)
         
         h_layout.addWidget(self.search_input, 2)
         h_layout.addWidget(self.chk_date)
@@ -99,13 +92,13 @@ class HistoryPage(QWidget):
         h_layout.addWidget(self.btn_search)
         h_layout.addWidget(self.btn_exp)
         h_layout.addWidget(self.btn_reprint)
-        h_layout.addWidget(btn_del)
+        h_layout.addWidget(self.btn_del)
         
         layout.addLayout(h_layout)
 
-        # --- 进度条 (默认隐藏) ---
+        # --- 进度条 ---
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0) # 忙碌模式
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.setFixedHeight(5)
         self.progress_bar.hide()
         layout.addWidget(self.progress_bar)
@@ -122,27 +115,24 @@ class HistoryPage(QWidget):
         header.setSectionResizeMode(7, QHeaderView.ResizeToContents) 
         
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        # 核心修改：设置为 ExtendedSelection 以支持 Ctrl/Shift 多选
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.hideColumn(0) 
         layout.addWidget(self.table)
         
-        # 状态标签
         self.lbl_status = QLabel("")
         self.lbl_status.setStyleSheet("color: gray;")
         layout.addWidget(self.lbl_status)
 
     def refresh_data(self):
-        # 页面切换时不需要自动加载，防止卡顿，由用户点击查询即可
         pass
 
     def load(self):
-        # 1. 禁用按钮，显示进度条，防止重复点击
         self.btn_search.setEnabled(False)
         self.progress_bar.show()
         self.lbl_status.setText("正在查询数据库，请稍候...")
         self.table.setRowCount(0)
 
-        # 2. 构建 SQL
         keyword = self.search_input.text().strip()
         sql = """
             SELECT id, box_no, box_sn_seq, name, spec, model, color, sn, code69, print_date 
@@ -151,10 +141,6 @@ class HistoryPage(QWidget):
         """
         params = []
 
-        # 优化策略：
-        # 如果勾选了日期，强制先用索引过滤日期。
-        # SQLite 查询优化器会优先使用 print_date 索引，
-        # 将扫描范围从 100万条 缩小到 几千条，然后再在这个小范围内匹配 SN。
         if self.chk_date.isChecked():
             s_date = self.date_start.date().toString("yyyy-MM-dd")
             e_date = self.date_end.date().toString("yyyy-MM-dd")
@@ -165,20 +151,17 @@ class HistoryPage(QWidget):
             params.append(end_time)
 
         if keyword:
-            # 模糊查询放在最后
             sql += " AND (sn LIKE ? OR box_no LIKE ?)"
             params.append(f"%{keyword}%")
             params.append(f"%{keyword}%")
         
         sql += " ORDER BY id DESC LIMIT 1000"
 
-        # 3. 启动后台线程
         self.worker = SearchWorker(self.db.db_name, sql, params)
         self.worker.finished.connect(self.on_search_finished)
         self.worker.start()
 
     def on_search_finished(self, rows, error):
-        # 线程回调：数据查完后更新 UI
         self.btn_search.setEnabled(True)
         self.progress_bar.hide()
         
@@ -188,14 +171,13 @@ class HistoryPage(QWidget):
             return
 
         self.table.setRowCount(0)
-        # 关闭排序功能以提高大批量插入速度
         self.table.setSortingEnabled(False) 
         
         for r_idx, row in enumerate(rows):
             self.table.insertRow(r_idx)
             for c_idx, val in enumerate(row):
                 text = str(val) if val is not None else ""
-                if c_idx == 9 and len(text) >= 10: # 时间格式化
+                if c_idx == 9 and len(text) >= 10:
                     try: text = text[:10]
                     except: pass
                 self.table.setItem(r_idx, c_idx, QTableWidgetItem(text))
@@ -265,9 +247,6 @@ class HistoryPage(QWidget):
             root = self.db.get_setting('template_root')
             full_path = os.path.join(root, tmpl_path) if root and tmpl_path else tmpl_path
             
-            # 使用 Bartender 打印
-            # 注意：此处直接调用打印是主线程阻塞的，但Bartender本身处理很快
-            # 如果需要，这里也可以改为线程调用
             ok, msg = self.printer.print_label(full_path, final_dat)
             if ok:
                 QMessageBox.information(self, "成功", "补打指令已发送")
@@ -292,7 +271,6 @@ class HistoryPage(QWidget):
             if not rows: return QMessageBox.warning(self, "提示", "无数据")
             
             self.lbl_status.setText("正在导出 Excel，请稍候...")
-            # 简单的导出可以在主线程，如果数据量特别大建议也移到线程
             df = pd.DataFrame(rows, columns=headers)
             if "ID" in df.columns: df = df.drop(columns=["ID"])
             df.to_excel(path, index=False)
@@ -302,12 +280,20 @@ class HistoryPage(QWidget):
 
     def delete_records(self):
         try:
+            # 获取所有选中行的行号（去重）
             rows = set(i.row() for i in self.table.selectedIndexes())
-            if not rows: return QMessageBox.warning(self, "提示", "未选中")
+            if not rows: return QMessageBox.warning(self, "提示", "未选中任何记录")
+            
+            # 获取 ID 列表
             ids = [self.table.item(r, 0).text() for r in rows]
-            if QMessageBox.question(self, "确认", f"删 {len(ids)} 条?", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+            
+            if QMessageBox.question(self, "确认", f"确定删除选中的 {len(ids)} 条记录吗?", 
+                                    QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
                 p = ",".join("?" * len(ids))
                 self.db.cursor.execute(f"DELETE FROM records WHERE id IN ({p})", ids)
                 self.db.conn.commit()
-                self.load() # 重新触发查询线程刷新
+                
+                # 删除后重新加载数据
+                self.load()
+                QMessageBox.information(self, "成功", "删除成功")
         except Exception as e: QMessageBox.critical(self, "错误", str(e))
