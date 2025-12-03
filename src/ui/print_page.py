@@ -2,12 +2,11 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdi
                              QListWidget, QPushButton, QComboBox, QDateEdit, QGroupBox,
                              QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
                              QAbstractItemView, QGridLayout)
-from PyQt5.QtCore import QDate, Qt, QTimer # 修正：添加 QTimer
+from PyQt5.QtCore import QDate, Qt, QTimer
 from src.database import Database
 from src.box_rules import BoxRuleEngine
 from src.bartender import BartenderPrinter
 from src.config import DEFAULT_MAPPING
-# 修正：添加 AppUpdater 引入
 try:
     from src.utils.updater import AppUpdater
 except ImportError:
@@ -31,40 +30,36 @@ class PrintPage(QWidget):
         self.init_ui()
         self.refresh_data()
         
-        # 修正：添加软件更新检查
         if AppUpdater:
             QTimer.singleShot(2000, lambda: AppUpdater.check_update(self))
 
     def init_ui(self):
-        # 0. 主布局
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        # 1. 内容区：水平布局
         content_layout = QHBoxLayout()
         content_layout.setSpacing(20)
 
-        # ==================== 左侧：操作区 (占比 7) ====================
+        # ==================== 左侧：操作区 ====================
         v_left = QVBoxLayout()
-        v_left.setSpacing(0) # 垂直间距设为 0
+        v_left.setSpacing(0) 
 
-        # 1.1 搜索框
+        # 搜索框
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 搜索产品...")
         self.input_search.setStyleSheet("font-size: 14px; padding: 6px; margin-bottom: 10px;")
         self.input_search.textChanged.connect(self.filter_products)
         v_left.addWidget(self.input_search)
 
-        # 1.2 产品列表
+        # 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
-        # 修正：产品列表行高调整至
         header = self.table_product.horizontalHeader()
-        header.setFixedHeight(25) # 表头高度 25
-        self.table_product.verticalHeader().setDefaultSectionSize(25) # 数据行高度 25
+        header.setFixedHeight(25) 
+        self.table_product.verticalHeader().setDefaultSectionSize(25) 
 
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -75,33 +70,28 @@ class PrintPage(QWidget):
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
 
-        # 增加空白区域
         v_left.addSpacing(15)
 
-        # 1.3 产品详情区域
+        # 产品详情
         grp = QGroupBox("产品详情")
-        # --- 修改 1: 调整 QGroupBox 样式，确保 "产品详情" 四字完整显示 ---
         grp.setStyleSheet("""
             QGroupBox { 
                 font-weight: bold; 
                 font-size: 16px; 
                 border: 1px solid #ccc; 
                 margin-bottom: 5px; 
-                margin-top: 20px; /* 增加顶部边距以容纳标题 */
+                margin-top: 20px;
             } 
             QGroupBox::title { 
                 subcontrol-origin: margin; 
                 left: 10px; 
                 padding: 0 5px; 
-                /* 移除 top: -6px; */
             }
         """)
         
-        # 详情组的布局
         h_grp_layout = QHBoxLayout(grp)
         h_grp_layout.setContentsMargins(10, 20, 10, 10)
         
-        # 左边详情部分
         v_details_left = QVBoxLayout()
         v_details_left.setSpacing(0)
         
@@ -125,38 +115,27 @@ class PrintPage(QWidget):
             gl.addWidget(l, r, c, Qt.AlignLeft)
             gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
-        # Row 0
         add_item(0, 0, "名称:", self.lbl_name)
         add_item(0, 2, "SN前4:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
-        # Row 1
         add_item(1, 0, "规格:", self.lbl_spec)
         add_item(1, 2, "SKU:", self.lbl_sku)
         add_item(1, 4, "箱号规则:", self.lbl_box_rule_name)
-        # Row 2
         add_item(2, 0, "型号:", self.lbl_model)
         add_item(2, 2, "69码:", self.lbl_code69)
         add_item(2, 4, "模板:", self.lbl_tmpl_name)
-        # Row 3
         add_item(3, 0, "颜色:", self.lbl_color)
         add_item(3, 2, "整箱数:", self.lbl_qty)
 
         gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
         v_details_left.addLayout(gl)
-        
-        # 产品详情 GroupBox 只包含详情信息
         h_grp_layout.addLayout(v_details_left, 10) 
-        
-        # 移除原代码中的 self.lbl_print_status，因为它将被移动
-        # self.lbl_print_status = QLabel("未打印") ... h_grp_layout.addWidget(self.lbl_print_status, 3) 
-        
         v_left.addWidget(grp)
 
-        # 1.4 日期与批次
+        # 日期与批次
         h_ctrl = QHBoxLayout()
         h_ctrl.setContentsMargins(0, 10, 0, 10) 
         
-        # 保持用户提供的字体大小 (30px)
         style_big_ctrl = "font-size: 30px; padding: 5px; min-height: 30px;"
         style_big_lbl = "font-size: 30px; font-weight: bold; color: #333;"
 
@@ -174,47 +153,39 @@ class PrintPage(QWidget):
         h_ctrl.addSpacing(30)
         h_ctrl.addWidget(l_batch); h_ctrl.addWidget(self.combo_repair)
         h_ctrl.addStretch()
-        
         v_left.addLayout(h_ctrl)
 
-        # 打印状态标签
+        # 打印状态
         self.lbl_print_status = QLabel("未打印")
         self.lbl_print_status.setAlignment(Qt.AlignCenter)
         self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
         
-        # 创建一个结合了 "当前箱号" 标题和 "打印状态" 标签的新水平布局
         h_box_and_status = QHBoxLayout()
-        # 1.5 当前箱号标题 (保持用户提供的字体大小 60px)
         self.lbl_box_title = QLabel("当前箱号:")
         self.lbl_box_title.setStyleSheet("font-size: 60px; font-weight: bold; color: #333; margin: 0px; padding: 0px;") 
         
         h_box_and_status.addWidget(self.lbl_box_title, 7)
         h_box_and_status.addWidget(self.lbl_print_status, 3) 
-
-        # 将这个组合布局添加到 v_left
         v_left.addLayout(h_box_and_status)
         
-        # 1.6 当前箱号数值
         self.lbl_box_no = QLabel("--")
         self.lbl_box_no.setWordWrap(False)
         self.lbl_box_no.setStyleSheet("font-size: 50px; font-weight: bold; color: #c0392b; margin: 0px; padding: 0px; font-family: Arial;")
         v_left.addWidget(self.lbl_box_no)
 
-        # 1.7 SN 输入框
+        # SN 输入框
         self.input_sn = QLineEdit()
         self.input_sn.setPlaceholderText("在此扫描SN...")
         self.input_sn.setMinimumHeight(120) 
-        # 修正：SN 输入框字体大小调整至 45px
         self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
         content_layout.addLayout(v_left, 7) 
 
-        # ==================== 右侧：SN列表区 (占比 3) ====================
+        # ==================== 右侧：SN列表区 ====================
         v_right = QVBoxLayout()
         
-        # 2.1 顶部工具栏
         h_tools = QHBoxLayout()
         
         self.lbl_daily = QLabel("今日: 0")
@@ -231,7 +202,6 @@ class PrintPage(QWidget):
 
         v_right.addLayout(h_tools)
 
-        # 2.2 列表
         self.list_sn = QListWidget()
         self.list_sn.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_sn.setStyleSheet("font-size: 23px;")
@@ -240,7 +210,6 @@ class PrintPage(QWidget):
         content_layout.addLayout(v_right, 3)
         main_layout.addLayout(content_layout)
 
-        # 3. 底部打印按钮
         self.btn_print = QPushButton("打印 / 封箱")
         self.btn_print.setMinimumHeight(90)
         self.btn_print.setStyleSheet("background:#e67e22; color:white; font-size:24px; font-weight:bold; border-radius: 5px;")
@@ -313,12 +282,10 @@ class PrintPage(QWidget):
                  self.current_sn_rule={'fmt':res[1], 'len':res[2]}
         self.lbl_sn_rule.setText(sn_rule_name)
 
-        # 重置列表和状态
         self.current_sn_list=[]; 
         self.update_sn_list_ui() 
         self.update_box_preview(); self.update_daily(); self.input_sn.setFocus()
         
-        # 重置状态标签为未打印
         self.lbl_print_status.setText("未打印")
         self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
 
@@ -339,8 +306,17 @@ class PrintPage(QWidget):
         d = datetime.datetime.now().strftime("%Y-%m-%d")+"%"
         try:
             c=self.db.conn.cursor()
-            c.execute("SELECT COUNT(DISTINCT box_no) FROM records WHERE name=? AND print_date LIKE ?", (self.current_product['name'], d))
-            self.lbl_daily.setText(f"今日: {c.fetchone()[0]}")
+            # --- 核心修改：按 产品名称 + 规格 + 型号 共同统计 ---
+            c.execute("""
+                SELECT COUNT(DISTINCT box_no) FROM records 
+                WHERE name=? AND spec=? AND model=? AND print_date LIKE ?
+            """, (self.current_product['name'], 
+                  self.current_product.get('spec',''), 
+                  self.current_product.get('model',''), 
+                  d))
+            res = c.fetchone()
+            count = res[0] if res else 0
+            self.lbl_daily.setText(f"今日: {count}")
         except: pass
 
     def validate_sn(self, sn):
@@ -373,7 +349,6 @@ class PrintPage(QWidget):
 
     def update_sn_list_ui(self):
         self.list_sn.clear()
-        # 保持 SN 列表的序号显示
         for i, (sn, _) in enumerate(self.current_sn_list):
             self.list_sn.addItem(f"{i+1}. {sn}")
         self.list_sn.scrollToBottom()
@@ -393,11 +368,12 @@ class PrintPage(QWidget):
         self.current_sn_list.append((sn, datetime.datetime.now()))
         self.update_sn_list_ui()
         
-        # 只要开始扫描新的，状态就变回“未打印”
         self.lbl_print_status.setText("未打印")
         self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
         
-        if len(self.current_sn_list) >= self.current_product['qty']: self.print_label()
+        # --- 核心修改：延迟触发打印，保证 UI 先刷新出最后一条 SN ---
+        if len(self.current_sn_list) >= self.current_product['qty']: 
+            QTimer.singleShot(500, self.print_label)
 
     def del_sn(self):
         try:
@@ -418,7 +394,6 @@ class PrintPage(QWidget):
         m = self.db.get_setting('field_mapping')
         if not isinstance(m, dict): m = DEFAULT_MAPPING
         
-        # 69码值处理
         code69_val = str(p.get('code69', '')).strip()
         
         src = {"name":p.get('name'), "spec":p.get('spec'), "model":p.get('model'), "color":p.get('color'),
@@ -429,44 +404,35 @@ class PrintPage(QWidget):
         for k,v in m.items(): 
             if k in src: dat[v] = src[k]
             
-        # 修正：强制添加69码备用键，防止映射遗漏导致打印空白
         if "code69" not in dat.values() and "Code69" not in dat.values():
              dat["Code69"] = code69_val
              dat["69码"] = code69_val
         
-        # --- 打印逻辑：空值补齐 ---
         full_box_qty = int(p.get('qty', 0))
         for i in range(full_box_qty):
             key = str(i+1)
             if i < len(self.current_sn_list):
                 dat[key] = self.current_sn_list[i][0]
             else:
-                # 传入空字符串，这样打印出来是空白，而不是模板默认值
                 dat[key] = "" 
-        # ------------------------
         
         root = self.db.get_setting('template_root')
         tp = p.get('template_path','')
         path = os.path.join(root, tp) if root and tp else tp
         
-        # 调用底层打印
         ok, msg = self.printer.print_label(path, dat)
         
         if ok:
-            # 1. 更新数据库记录
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # 修正：记录正确的 box_sn_seq (序号从 1 开始)
             for i, (sn,_) in enumerate(self.current_sn_list):
                 self.db.cursor.execute("INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date) VALUES (?,?,?,?,?,?,?,?,?)",
                                        (self.current_box_no, i+1, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
             self.db.conn.commit()
             self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
             
-            # 2. 更新UI状态：显示“打印完成” (绿色)
             self.lbl_print_status.setText("打印完成")
             self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: green; border: 2px solid #ddd; border-radius: 8px; background-color: #e8f8f5; padding: 10px; min-height: 100px;")
             
-            # 3. 清空列表并刷新
             self.current_sn_list=[]; 
             self.update_sn_list_ui()
             self.update_box_preview()
