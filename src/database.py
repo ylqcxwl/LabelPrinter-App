@@ -56,18 +56,19 @@ class Database:
                 name TEXT NOT NULL UNIQUE, rule_string TEXT NOT NULL, length INTEGER DEFAULT 0
             )
         ''')
+        # 修改：增加 batch 字段定义
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 box_sn_seq INTEGER, name TEXT, spec TEXT, model TEXT, color TEXT,
-                code69 TEXT, sn TEXT, box_no TEXT, prod_date TEXT, print_date TEXT
+                code69 TEXT, sn TEXT, box_no TEXT, prod_date TEXT, print_date TEXT,
+                batch TEXT
             )
         ''')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS box_counters (key TEXT PRIMARY KEY, current_val INTEGER)')
         
         # --- 索引优化：百万级数据查询的生命线 ---
-        # 即使有百万条数据，精确查找（如查重）配合索引依然是 0.00x 秒
         index_queries = [
             "CREATE INDEX IF NOT EXISTS idx_records_sn ON records (sn)",
             "CREATE INDEX IF NOT EXISTS idx_records_box_no ON records (box_no)",
@@ -83,6 +84,8 @@ class Database:
         self._check_and_add_column('products', 'rule_id', 'INTEGER DEFAULT 0')
         self._check_and_add_column('products', 'sn_rule_id', 'INTEGER DEFAULT 0')
         self._check_and_add_column('box_rules', 'rule_string', 'TEXT')
+        # 新增：检查 records 表是否有 batch 字段，没有则添加
+        self._check_and_add_column('records', 'batch', 'TEXT')
         
         # 初始化默认设置
         default_mapping_json = json.dumps(DEFAULT_MAPPING)
@@ -124,7 +127,7 @@ class Database:
             # 必须先 commit 确保 WAL 数据写入文件
             self.conn.commit()
             
-            # 使用 SQLite 专用的 backup API，比文件复制更安全
+            # 使用 SQLite 专用的 backup API
             bck = sqlite3.connect(f)
             self.conn.backup(bck)
             bck.close()
@@ -150,8 +153,6 @@ class Database:
         except Exception as e: return False, str(e)
 
     def check_sn_exists(self, sn):
-        # 优化：LIMIT 1 只要找到一个就立刻停止扫描，
-        # 在有索引的情况下，百万级数据查重也是毫秒级
         self.cursor.execute("SELECT 1 FROM records WHERE sn=? LIMIT 1", (sn,))
         return self.cursor.fetchone() is not None
 
