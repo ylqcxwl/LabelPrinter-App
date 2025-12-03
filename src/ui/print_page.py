@@ -144,7 +144,9 @@ class PrintPage(QWidget):
         
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
         self.combo_repair.setStyleSheet(style_big_ctrl)
-        self.combo_repair.currentIndexChanged.connect(self.update_box_preview)
+        
+        # 修改：同时绑定预览更新和日计数更新
+        self.combo_repair.currentIndexChanged.connect(self.on_batch_change)
         
         l_date = QLabel("日期:"); l_date.setStyleSheet(style_big_lbl)
         l_batch = QLabel("批次:"); l_batch.setStyleSheet(style_big_lbl)
@@ -289,6 +291,10 @@ class PrintPage(QWidget):
         self.lbl_print_status.setText("未打印")
         self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
 
+    def on_batch_change(self):
+        self.update_box_preview()
+        self.update_daily()
+
     def update_box_preview(self):
         if not self.current_product: return
         try:
@@ -305,15 +311,24 @@ class PrintPage(QWidget):
         if not self.current_product: return
         d = datetime.datetime.now().strftime("%Y-%m-%d")+"%"
         try:
+            current_batch = self.combo_repair.currentText()
             c=self.db.conn.cursor()
-            # --- 核心修改：按 产品名称 + 规格 + 型号 共同统计 ---
-            c.execute("""
+            
+            # --- 核心修改：增加 Color 和 Batch 字段的筛选 ---
+            # 确保统计维度为：产品+规格+型号+颜色+批次
+            query = """
                 SELECT COUNT(DISTINCT box_no) FROM records 
-                WHERE name=? AND spec=? AND model=? AND print_date LIKE ?
-            """, (self.current_product['name'], 
-                  self.current_product.get('spec',''), 
-                  self.current_product.get('model',''), 
-                  d))
+                WHERE name=? AND spec=? AND model=? AND color=? AND batch=? AND print_date LIKE ?
+            """
+            params = (
+                self.current_product['name'], 
+                self.current_product.get('spec',''), 
+                self.current_product.get('model',''), 
+                self.current_product.get('color',''), 
+                current_batch,
+                d
+            )
+            c.execute(query, params)
             res = c.fetchone()
             count = res[0] if res else 0
             self.lbl_daily.setText(f"今日: {count}")
@@ -371,7 +386,6 @@ class PrintPage(QWidget):
         self.lbl_print_status.setText("未打印")
         self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: red; border: 2px solid #ddd; border-radius: 8px; background-color: #f9f9f9; padding: 10px; min-height: 100px;")
         
-        # --- 核心修改：延迟触发打印，保证 UI 先刷新出最后一条 SN ---
         if len(self.current_sn_list) >= self.current_product['qty']: 
             QTimer.singleShot(500, self.print_label)
 
@@ -395,6 +409,7 @@ class PrintPage(QWidget):
         if not isinstance(m, dict): m = DEFAULT_MAPPING
         
         code69_val = str(p.get('code69', '')).strip()
+        current_batch_val = self.combo_repair.currentText()
         
         src = {"name":p.get('name'), "spec":p.get('spec'), "model":p.get('model'), "color":p.get('color'),
                "sn4":p.get('sn4'), "sku":p.get('sku'), "code69":code69_val, "qty":len(self.current_sn_list),
@@ -424,11 +439,15 @@ class PrintPage(QWidget):
         
         if ok:
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # --- 核心修改：在写入记录时增加 batch 字段 ---
             for i, (sn,_) in enumerate(self.current_sn_list):
-                self.db.cursor.execute("INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date) VALUES (?,?,?,?,?,?,?,?,?)",
-                                       (self.current_box_no, i+1, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now))
+                self.db.cursor.execute("""
+                    INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date, batch) 
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                """, (self.current_box_no, i+1, p['name'], p['spec'], p['model'], p['color'], p['code69'], sn, now, current_batch_val))
+            
             self.db.conn.commit()
-            self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(self.combo_repair.currentText()))
+            self.rule_engine.commit_sequence(p['rule_id'], p['id'], int(current_batch_val))
             
             self.lbl_print_status.setText("打印完成")
             self.lbl_print_status.setStyleSheet("font-size: 40px; font-weight: bold; color: green; border: 2px solid #ddd; border-radius: 8px; background-color: #e8f8f5; padding: 10px; min-height: 100px;")
