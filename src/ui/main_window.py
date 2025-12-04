@@ -10,9 +10,16 @@ from src.database import Database
 # 导入各个页面
 from src.ui.product_page import ProductPage
 from src.ui.print_page import PrintPage
-from src.ui.history_page import HistoryPage
-# --- 修改点：直接导入 SettingsPage，确保文件名必须是 settings_page.py ---
-from src.ui.settings_page import SettingsPage 
+# 兼容导入 RecordPage/HistoryPage
+try:
+    from src.ui.record_page import RecordPage as HistoryPage
+except ImportError:
+    from src.ui.history_page import HistoryPage
+# 兼容导入 SettingsPage
+try:
+    from src.ui.settings_page import SettingsPage
+except ImportError:
+    from src.ui.setting_page import SettingsPage
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -63,10 +70,10 @@ class MainWindow(QMainWindow):
                 color: #ecf0f1;
                 background-color: transparent;
                 border: none;
-                padding-left: 30px;
+                padding-left: 30px; /* 左侧留出空间给图标 */
                 padding-top: 15px;
                 padding-bottom: 15px;
-                text-align: left;
+                text-align: left;   /* 文字左对齐 */
                 font-size: 16px;
                 font-weight: 500;
                 border-left: 5px solid transparent;
@@ -76,14 +83,15 @@ class MainWindow(QMainWindow):
                 color: white;
             }
             QPushButton:checked {
-                background-color: #2c3e50;
-                color: #e67e22;
-                border-left: 5px solid #e67e22;
+                background-color: #2c3e50; /* 选中背景色 */
+                color: #e67e22;            /* 选中文字变橙色 */
+                border-left: 5px solid #e67e22; /* 左侧橙色指示条 */
                 font-weight: bold;
             }
         """
 
         # 定义按钮 
+        # 修改：使用 '🔖' (书签/吊牌)，这是 Unicode 6.0 标准，在 Win7 上兼容性极好，且形似标签
         self.btn_product = QPushButton("📦  产品管理")
         self.btn_print = QPushButton("🔖  打印标签") 
         self.btn_history = QPushButton("📜  打印记录")
