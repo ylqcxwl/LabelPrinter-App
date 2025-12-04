@@ -3,7 +3,9 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLineEdit, QPush
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QTabWidget, QLabel, QFileDialog, QComboBox, QSpinBox)
 from PyQt5.QtCore import Qt
+# --- 新增导入：用于获取打印机信息 ---
 from PyQt5.QtPrintSupport import QPrinterInfo 
+# -----------------------------------
 from src.database import Database
 from src.config import DEFAULT_MAPPING
 import json
@@ -50,11 +52,10 @@ class SettingsPage(QWidget):
         info = QTextEdit()
         info.setReadOnly(True)
         info.setMaximumHeight(160)
-        # 修改：说明文本 "SN前4位" -> "SN前缀"
         info.setHtml("""
         <h4>📦 箱号规则编写说明</h4>
         <ul>
-        <li><code>{SN4}</code>: SN前缀</li>
+        <li><code>{SN4}</code>: SN前4位</li>
         <li><code>{Y1}/{Y2}</code>: 年1位/2位 (2025->5/25)</li>
         <li><code>{M1}</code>: 月代码 (1-9, A, B, C)</li>
         <li><code>{MM}/{DD}</code>: 月/日 (01-12, 01-31)</li>
@@ -154,11 +155,10 @@ class SettingsPage(QWidget):
         info = QTextEdit()
         info.setReadOnly(True)
         info.setMaximumHeight(150)
-        # 修改：说明文本 "SN前4位" -> "SN前缀"
         info.setHtml("""
         <h4>🔢 SN校验规则说明</h4>
         <ul>
-        <li><code>{SN4}</code>: 匹配SN前缀</li>
+        <li><code>{SN4}</code>: 匹配SN前4位</li>
         <li><code>{BATCH}</code>: 匹配批次号(0-9)</li>
         <li><code>{SEQn}</code>: 匹配n位数字 (如 {SEQ7})</li>
         <li>固定字符: 如 / - A</li>
@@ -292,9 +292,8 @@ class SettingsPage(QWidget):
         self.table_map.insertRow(row)
         
         cb = QComboBox()
-        # 修改：下拉选项 "SN前4" -> "SN前缀"
         items = [("name","名称"),("spec","规格"),("model","型号"),("color","颜色"),
-                 ("sn4","SN前缀"),("sku","SKU"),("code69","69码"),("qty","数量"),
+                 ("sn4","SN前4"),("sku","SKU"),("code69","69码"),("qty","数量"),
                  ("weight","重量"),("box_no","箱号"),("prod_date","日期")]
         for k, l in items:
             cb.addItem(f"{l} ({k})", k)
@@ -322,7 +321,10 @@ class SettingsPage(QWidget):
 
     # ================= 4. 系统维护 =================
     def get_available_printers(self):
+        """获取系统上所有可用的打印机名称列表。"""
+        # 使用 QPrinterInfo 获取打印机列表
         printers = [info.printerName() for info in QPrinterInfo.availablePrinters()]
+        # 确保列表中包含一个“使用系统默认”的选项，并放在第一位
         printers.insert(0, "使用系统默认打印机")
         return printers
 
@@ -340,7 +342,7 @@ class SettingsPage(QWidget):
         l1.addWidget(b1)
         layout.addWidget(g1)
 
-        # 默认打印机
+        # --- 新增：默认打印机设置 ---
         g_printer = QGroupBox("默认打印机")
         l_printer = QHBoxLayout(g_printer)
         self.combo_printer = QComboBox()
@@ -353,6 +355,7 @@ class SettingsPage(QWidget):
         l_printer.addWidget(btn_save_printer)
         l_printer.setStretchFactor(self.combo_printer, 1)
         layout.addWidget(g_printer)
+        # ----------------------------
         
         # 备份路径
         g2 = QGroupBox("备份目录")
@@ -386,12 +389,14 @@ class SettingsPage(QWidget):
         if p2: self.path_bk_edit.setText(p2)
 
     def load_default_printer(self):
+        """加载默认打印机设置。"""
         default_printer_name = self.db.get_setting('default_printer')
         if default_printer_name:
             index = self.combo_printer.findText(default_printer_name)
             if index >= 0:
                 self.combo_printer.setCurrentIndex(index)
             else:
+                # 如果数据库中的打印机不在当前列表中，则默认选中第一个
                 self.combo_printer.setCurrentIndex(0)
         else:
             self.combo_printer.setCurrentIndex(0)
@@ -413,12 +418,14 @@ class SettingsPage(QWidget):
             QMessageBox.information(self, "成功", "备份目录设置成功！")
 
     def sel_default_printer(self):
+        """保存用户选择的默认打印机。"""
         selected_printer = self.combo_printer.currentText()
         self.db.set_setting('default_printer', selected_printer)
         self.db.conn.commit()
         QMessageBox.information(self, "成功", f"默认打印机已设置为: {selected_printer}")
 
     def do_backup(self):
+        # 确保路径已保存并提交
         self.db.conn.commit() 
         ok, msg = self.db.backup_db()
         QMessageBox.information(self, "结果", msg)
@@ -430,11 +437,10 @@ class SettingsPage(QWidget):
                 ok, msg = self.db.restore_db(p)
                 QMessageBox.information(self, "结果", msg)
 
+    # ================= 全局刷新 =================
     def refresh_data(self):
         self.load_box_rules()
         self.load_sn_rules()
         self.load_map()
         self.load_sys_paths()
-        self.load_default_printer()
-
-}
+        self.load_default_printer() # --- 新增调用 ---
