@@ -55,8 +55,7 @@ class PrintPage(QWidget):
         # 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
-        # 修改：表头 "SN前4" -> "SN前缀"
-        self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前缀", "箱规"])
+        self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
         header = self.table_product.horizontalHeader()
         header.setFixedHeight(25) 
@@ -117,8 +116,7 @@ class PrintPage(QWidget):
             gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
         add_item(0, 0, "名称:", self.lbl_name)
-        # 修改：标签 "SN前4:" -> "SN前缀:"
-        add_item(0, 2, "SN前缀:", self.lbl_sn4)
+        add_item(0, 2, "SN前4:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
         add_item(1, 0, "规格:", self.lbl_spec)
         add_item(1, 2, "SKU:", self.lbl_sku)
@@ -147,6 +145,7 @@ class PrintPage(QWidget):
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
         self.combo_repair.setStyleSheet(style_big_ctrl)
         
+        # 修改：同时绑定预览更新和日计数更新
         self.combo_repair.currentIndexChanged.connect(self.on_batch_change)
         
         l_date = QLabel("日期:"); l_date.setStyleSheet(style_big_lbl)
@@ -315,6 +314,8 @@ class PrintPage(QWidget):
             current_batch = self.combo_repair.currentText()
             c=self.db.conn.cursor()
             
+            # --- 核心修改：增加 Color 和 Batch 字段的筛选 ---
+            # 确保统计维度为：产品+规格+型号+颜色+批次
             query = """
                 SELECT COUNT(DISTINCT box_no) FROM records 
                 WHERE name=? AND spec=? AND model=? AND color=? AND batch=? AND print_date LIKE ?
@@ -438,6 +439,7 @@ class PrintPage(QWidget):
         
         if ok:
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # --- 核心修改：在写入记录时增加 batch 字段 ---
             for i, (sn,_) in enumerate(self.current_sn_list):
                 self.db.cursor.execute("""
                     INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date, batch) 
