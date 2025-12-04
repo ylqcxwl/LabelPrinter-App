@@ -26,9 +26,9 @@ class ProductPage(QWidget):
 
         # Table
         self.table = QTableWidget()
-        # 修改：将 "SN前4" 改为 "SN前缀"
+        # ID, Name, Spec, Model, Color, SN4, SKU, 69, Qty, Weight, Tmpl, BoxRule, SNRule
         self.table.setColumnCount(13)
-        self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "型号", "颜色", "SN前缀", "SKU", "69码", "数量", "重量", "模板名称", "箱规ID", "SN规ID"])
+        self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "型号", "颜色", "SN前4", "SKU", "69码", "数量", "重量", "模板名称", "箱规ID", "SN规ID"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -66,8 +66,7 @@ class ProductPage(QWidget):
                 self.db.conn.commit(); self.refresh_data()
                 QMessageBox.information(self, "成功", "已添加")
             except Exception as e:
-                # 修改提示文本
-                msg = "SN前缀已存在" if "UNIQUE constraint" in str(e) else str(e)
+                msg = "SN前4位已存在" if "UNIQUE constraint" in str(e) else str(e)
                 QMessageBox.critical(self, "错误", msg)
 
     def edit_product(self):
@@ -121,32 +120,7 @@ class ProductPage(QWidget):
 
     def export_data(self):
         p, _ = QFileDialog.getSaveFileName(self, "导出", "products.xlsx", "Excel (*.xlsx)")
-        if not p: return
-        try:
-            # 修改：增加列名映射，使导出表头为中文
-            df = pd.read_sql_query("SELECT * FROM products", self.db.conn)
-            
-            col_map = {
-                "id": "ID",
-                "name": "名称",
-                "spec": "规格",
-                "model": "型号",
-                "color": "颜色",
-                "sn4": "SN前缀",
-                "sku": "SKU",
-                "code69": "69码",
-                "qty": "数量",
-                "weight": "重量",
-                "template_path": "模板路径",
-                "rule_id": "箱规ID",
-                "sn_rule_id": "SN规ID"
-            }
-            df.rename(columns=col_map, inplace=True)
-            
-            df.to_excel(p, index=False)
-            QMessageBox.information(self, "成功", "导出成功")
-        except Exception as e: 
-            QMessageBox.critical(self, "错误", str(e))
+        if p: pd.read_sql_query("SELECT * FROM products", self.db.conn).to_excel(p, index=False); QMessageBox.information(self,"好","成功")
 
 class ProductDialog(QDialog):
     def __init__(self, parent=None, data=None):
@@ -156,8 +130,8 @@ class ProductDialog(QDialog):
         self.db = Database()
         self.inputs = {}
         
-        # 修改：标签改为 "SN前缀"
-        f_map = [("名称",1), ("规格",2), ("型号",3), ("颜色",4), ("SN前缀(唯一)",5), ("SKU",6), ("69码",7), ("重量",9)]
+        # 字段定义 (Name, DB Index)
+        f_map = [("名称",1), ("规格",2), ("型号",3), ("颜色",4), ("SN前4(唯一)",5), ("SKU",6), ("69码",7), ("重量",9)]
         for lbl, idx in f_map:
             le = QLineEdit()
             if data: le.setText(str(data[idx]) if data[idx] else "")
@@ -182,11 +156,12 @@ class ProductDialog(QDialog):
         if data: idx = self.cb_box.findData(data[11]); self.cb_box.setCurrentIndex(idx if idx>=0 else 0)
         self.layout.addRow("箱号规则", self.cb_box)
 
-        # SN Rule
+        # SN Rule (New)
         self.cb_sn = QComboBox(); self.cb_sn.addItem("无", 0)
         self.db.cursor.execute("SELECT id, name FROM sn_rules")
         for r in self.db.cursor.fetchall(): self.cb_sn.addItem(r[1], r[0])
         if data: 
+            # data[12] 是 sn_rule_id，如果数据库结构刚变，可能需要 try/except 处理旧数据
             try:
                 idx = self.cb_sn.findData(data[12])
                 self.cb_sn.setCurrentIndex(idx if idx>=0 else 0)
@@ -204,7 +179,7 @@ class ProductDialog(QDialog):
     def get_data(self):
         return (
             self.inputs["名称"].text(), self.inputs["规格"].text(), self.inputs["型号"].text(), self.inputs["颜色"].text(),
-            self.inputs["SN前缀(唯一)"].text(), self.inputs["SKU"].text(), self.inputs["69码"].text(),
+            self.inputs["SN前4(唯一)"].text(), self.inputs["SKU"].text(), self.inputs["69码"].text(),
             self.spin_qty.value(), self.inputs["重量"].text(), self.full_tmpl,
             self.cb_box.currentData(), self.cb_sn.currentData()
-  )
+      )
