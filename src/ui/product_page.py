@@ -28,7 +28,8 @@ class ProductPage(QWidget):
         self.table = QTableWidget()
         # ID, Name, Spec, Model, Color, SN4, SKU, 69, Qty, Weight, Tmpl, BoxRule, SNRule
         self.table.setColumnCount(13)
-        self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "型号", "颜色", "SN前4", "SKU", "69码", "数量", "重量", "模板名称", "箱规ID", "SN规ID"])
+        # 修改：将 "SN前4" 改为 "SN前缀"
+        self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "型号", "颜色", "SN前缀", "SKU", "69码", "数量", "重量", "模板名称", "箱规ID", "SN规ID"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -66,7 +67,8 @@ class ProductPage(QWidget):
                 self.db.conn.commit(); self.refresh_data()
                 QMessageBox.information(self, "成功", "已添加")
             except Exception as e:
-                msg = "SN前4位已存在" if "UNIQUE constraint" in str(e) else str(e)
+                # 修改：错误提示文案
+                msg = "SN前缀已存在" if "UNIQUE constraint" in str(e) else str(e)
                 QMessageBox.critical(self, "错误", msg)
 
     def edit_product(self):
@@ -131,7 +133,8 @@ class ProductDialog(QDialog):
         self.inputs = {}
         
         # 字段定义 (Name, DB Index)
-        f_map = [("名称",1), ("规格",2), ("型号",3), ("颜色",4), ("SN前4(唯一)",5), ("SKU",6), ("69码",7), ("重量",9)]
+        # 修改：显示标签改为 "SN前缀(唯一)"
+        f_map = [("名称",1), ("规格",2), ("型号",3), ("颜色",4), ("SN前缀(唯一)",5), ("SKU",6), ("69码",7), ("重量",9)]
         for lbl, idx in f_map:
             le = QLineEdit()
             if data: le.setText(str(data[idx]) if data[idx] else "")
@@ -177,9 +180,10 @@ class ProductDialog(QDialog):
         if p: self.tmpl_le.setText(os.path.basename(p)); self.full_tmpl = os.path.basename(p)
 
     def get_data(self):
+        # 修改：Key 对应上面的 f_map 定义
         return (
             self.inputs["名称"].text(), self.inputs["规格"].text(), self.inputs["型号"].text(), self.inputs["颜色"].text(),
-            self.inputs["SN前4(唯一)"].text(), self.inputs["SKU"].text(), self.inputs["69码"].text(),
+            self.inputs["SN前缀(唯一)"].text(), self.inputs["SKU"].text(), self.inputs["69码"].text(),
             self.spin_qty.value(), self.inputs["重量"].text(), self.full_tmpl,
             self.cb_box.currentData(), self.cb_sn.currentData()
-      )
+          )
