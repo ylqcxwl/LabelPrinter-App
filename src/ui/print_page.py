@@ -55,7 +55,8 @@ class PrintPage(QWidget):
         # 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
-        self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
+        # 修改：将 "SN前4" 改为 "SN前缀"
+        self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前缀", "箱规"])
         
         header = self.table_product.horizontalHeader()
         header.setFixedHeight(25) 
@@ -116,7 +117,8 @@ class PrintPage(QWidget):
             gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
         add_item(0, 0, "名称:", self.lbl_name)
-        add_item(0, 2, "SN前4:", self.lbl_sn4)
+        # 修改：将 "SN前4:" 改为 "SN前缀:"
+        add_item(0, 2, "SN前缀:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
         add_item(1, 0, "规格:", self.lbl_spec)
         add_item(1, 2, "SKU:", self.lbl_sku)
