@@ -52,10 +52,11 @@ class SettingsPage(QWidget):
         info = QTextEdit()
         info.setReadOnly(True)
         info.setMaximumHeight(160)
+        # 修改：HTML 说明中的 "SN前4位" 改为 "SN前缀"
         info.setHtml("""
         <h4>📦 箱号规则编写说明</h4>
         <ul>
-        <li><code>{SN4}</code>: SN前4位</li>
+        <li><code>{SN4}</code>: SN前缀</li>
         <li><code>{Y1}/{Y2}</code>: 年1位/2位 (2025->5/25)</li>
         <li><code>{M1}</code>: 月代码 (1-9, A, B, C)</li>
         <li><code>{MM}/{DD}</code>: 月/日 (01-12, 01-31)</li>
@@ -155,10 +156,11 @@ class SettingsPage(QWidget):
         info = QTextEdit()
         info.setReadOnly(True)
         info.setMaximumHeight(150)
+        # 修改：HTML 说明中的 "匹配SN前4位" 改为 "匹配SN前缀"
         info.setHtml("""
         <h4>🔢 SN校验规则说明</h4>
         <ul>
-        <li><code>{SN4}</code>: 匹配SN前4位</li>
+        <li><code>{SN4}</code>: 匹配SN前缀</li>
         <li><code>{BATCH}</code>: 匹配批次号(0-9)</li>
         <li><code>{SEQn}</code>: 匹配n位数字 (如 {SEQ7})</li>
         <li>固定字符: 如 / - A</li>
@@ -292,8 +294,9 @@ class SettingsPage(QWidget):
         self.table_map.insertRow(row)
         
         cb = QComboBox()
+        # 修改：下拉选项中的 "SN前4" 改为 "SN前缀"
         items = [("name","名称"),("spec","规格"),("model","型号"),("color","颜色"),
-                 ("sn4","SN前4"),("sku","SKU"),("code69","69码"),("qty","数量"),
+                 ("sn4","SN前缀"),("sku","SKU"),("code69","69码"),("qty","数量"),
                  ("weight","重量"),("box_no","箱号"),("prod_date","日期")]
         for k, l in items:
             cb.addItem(f"{l} ({k})", k)
