@@ -314,13 +314,18 @@ class PrintPage(QWidget):
         d = datetime.datetime.now().strftime("%Y-%m-%d")+"%"
         try:
             current_batch = self.combo_repair.currentText()
+            # 获取 69码 和 SN前缀
+            c69 = self.current_product.get('code69', '')
+            sn_prefix = self.current_product.get('sn4', '')
+            
             c=self.db.conn.cursor()
             
-            # --- 核心修改：增加 Color 和 Batch 字段的筛选 ---
-            # 确保统计维度为：产品+规格+型号+颜色+批次
+            # --- 核心修改：统计维度加入 69码 和 SN前缀(通过sn字段模糊匹配) ---
+            # 维度: 产品+规格+型号+颜色+批次+69码+SN前缀
             query = """
                 SELECT COUNT(DISTINCT box_no) FROM records 
-                WHERE name=? AND spec=? AND model=? AND color=? AND batch=? AND print_date LIKE ?
+                WHERE name=? AND spec=? AND model=? AND color=? AND batch=? 
+                AND code69=? AND sn LIKE ? AND print_date LIKE ?
             """
             params = (
                 self.current_product['name'], 
@@ -328,6 +333,8 @@ class PrintPage(QWidget):
                 self.current_product.get('model',''), 
                 self.current_product.get('color',''), 
                 current_batch,
+                c69,
+                f"{sn_prefix}%", # SN前缀匹配
                 d
             )
             c.execute(query, params)
