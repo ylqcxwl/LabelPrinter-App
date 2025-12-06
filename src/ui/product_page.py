@@ -121,8 +121,42 @@ class ProductPage(QWidget):
         except Exception as e: QMessageBox.critical(self, "错", str(e))
 
     def export_data(self):
+        """
+        导出产品数据到 Excel，并将标题行转换为中文
+        """
         p, _ = QFileDialog.getSaveFileName(self, "导出", "products.xlsx", "Excel (*.xlsx)")
-        if p: pd.read_sql_query("SELECT * FROM products", self.db.conn).to_excel(p, index=False); QMessageBox.information(self,"好","成功")
+        if not p: return
+        
+        try:
+            # 1. 读取数据
+            df = pd.read_sql_query("SELECT * FROM products", self.db.conn)
+            
+            # 2. 定义中英文字段映射
+            rename_map = {
+                "id": "ID",
+                "name": "名称",
+                "spec": "规格",
+                "model": "型号",
+                "color": "颜色",
+                "sn4": "SN前缀",
+                "sku": "SKU",
+                "code69": "69码",
+                "qty": "数量",
+                "weight": "重量",
+                "template_path": "模板路径",
+                "rule_id": "箱规ID",
+                "sn_rule_id": "SN规ID"
+            }
+            
+            # 3. 重命名列
+            df.rename(columns=rename_map, inplace=True)
+            
+            # 4. 写入文件
+            df.to_excel(p, index=False)
+            QMessageBox.information(self, "好", "成功")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "错误", str(e))
 
 class ProductDialog(QDialog):
     def __init__(self, parent=None, data=None):
@@ -186,4 +220,4 @@ class ProductDialog(QDialog):
             self.inputs["SN前缀(唯一)"].text(), self.inputs["SKU"].text(), self.inputs["69码"].text(),
             self.spin_qty.value(), self.inputs["重量"].text(), self.full_tmpl,
             self.cb_box.currentData(), self.cb_sn.currentData()
-          )
+      )
