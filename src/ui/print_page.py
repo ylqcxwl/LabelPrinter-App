@@ -62,11 +62,16 @@ class PrintPage(QWidget):
         header.setFixedHeight(25) 
         self.table_product.verticalHeader().setDefaultSectionSize(25) 
 
-        self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # --- 核心修改：固定表格高度，防止自动拉伸导致UI抖动 ---
+        # 保持列宽自适应
+        self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) 
+        # 设置固定的高度
+        self.table_product.setFixedHeight(150) 
+        # --- 结束修改 ---
+        
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table_product.setMaximumHeight(150)
         self.table_product.setStyleSheet("margin-bottom: 0px;") 
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
@@ -250,6 +255,16 @@ class PrintPage(QWidget):
                     c=self.db.conn.cursor(); c.execute("SELECT name FROM box_rules WHERE id=?",(p['rule_id'],))
                     res=c.fetchone(); rn=res[0] if res else "无"
                 self.table_product.setItem(r,5,QTableWidgetItem(rn))
+        
+        # --- 确保设置固定的高度，即使数据行数少于最大高度，也不会影响布局 ---
+        # 实际高度 = (行高 + 边框) * 行数 + 表头高度
+        # 假设行高25, 表头25, 最大约5行数据
+        min_rows = min(self.table_product.rowCount(), 5)
+        height = min_rows * 25 + 25 
+        if self.table_product.rowCount() == 0:
+            height = 50 # 至少显示表头
+        self.table_product.setFixedHeight(max(150, height)) 
+
 
     def on_product_select(self, item):
         if not item: return
@@ -448,7 +463,7 @@ class PrintPage(QWidget):
         
         if ok:
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # --- 核心修改：在写入记录时增加 batch 字段 ---
+            # --- 核心修改：在写入记录时增加 batch 字段 ---\n
             for i, (sn,_) in enumerate(self.current_sn_list):
                 self.db.cursor.execute("""
                     INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date, batch) 
