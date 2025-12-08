@@ -62,10 +62,8 @@ class PrintPage(QWidget):
         header.setFixedHeight(25) 
         self.table_product.verticalHeader().setDefaultSectionSize(25) 
 
-        # --- 核心修改：固定表格高度，防止自动拉伸导致UI抖动 ---
-        # 保持列宽自适应
+        # --- 保持列宽自适应，固定表格高度，防止自动拉伸导致UI抖动 ---
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) 
-        # 设置固定的高度
         self.table_product.setFixedHeight(150) 
         # --- 结束修改 ---
         
@@ -136,6 +134,7 @@ class PrintPage(QWidget):
 
         gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
         v_details_left.addLayout(gl)
+        v_details_left.addStretch() # <-- 增加垂直伸展项以固定上方内容高度
         h_grp_layout.addLayout(v_details_left, 10) 
         v_left.addWidget(grp)
 
@@ -415,7 +414,7 @@ class PrintPage(QWidget):
 
     def del_sn(self):
         try:
-            rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedItems()], reverse=True)
+            rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedIndexes()], reverse=True)
             if not rows: return
             
             for row in rows:
@@ -463,7 +462,7 @@ class PrintPage(QWidget):
         
         if ok:
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # --- 核心修改：在写入记录时增加 batch 字段 ---\n
+            # --- 核心修改：在写入记录时增加 batch 字段 ---
             for i, (sn,_) in enumerate(self.current_sn_list):
                 self.db.cursor.execute("""
                     INSERT INTO records (box_no, box_sn_seq, name, spec, model, color, code69, sn, print_date, batch) 
