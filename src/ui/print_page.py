@@ -55,17 +55,16 @@ class PrintPage(QWidget):
         # 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
-        # 修改：将 "SN前4" 改为 "SN前缀"
         self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前缀", "箱规"])
         
         header = self.table_product.horizontalHeader()
         header.setFixedHeight(25) 
         self.table_product.verticalHeader().setDefaultSectionSize(25) 
 
-        # --- 保持列宽自适应，固定表格高度，防止自动拉伸导致UI抖动 ---
+        # --- 固定表格高度 ---
         self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) 
         self.table_product.setFixedHeight(150) 
-        # --- 结束修改 ---
+        # --- 结束固定表格高度 ---
         
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -78,6 +77,11 @@ class PrintPage(QWidget):
 
         # 产品详情
         grp = QGroupBox("产品详情")
+        
+        # --- 核心修改 1：限制 QGroupBox 的最大高度，防止其在 QVBoxLayout 中过度拉伸 ---
+        grp.setMaximumHeight(250) 
+        # --- 结束核心修改 1 ---
+        
         grp.setStyleSheet("""
             QGroupBox { 
                 font-weight: bold; 
@@ -120,7 +124,6 @@ class PrintPage(QWidget):
             gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
         add_item(0, 0, "名称:", self.lbl_name)
-        # 修改：将 "SN前4:" 改为 "SN前缀:"
         add_item(0, 2, "SN前缀:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
         add_item(1, 0, "规格:", self.lbl_spec)
@@ -134,7 +137,7 @@ class PrintPage(QWidget):
 
         gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
         v_details_left.addLayout(gl)
-        v_details_left.addStretch() # <-- 增加垂直伸展项以固定上方内容高度
+        v_details_left.addStretch() # 确保 grid 布局贴顶
         h_grp_layout.addLayout(v_details_left, 10) 
         v_left.addWidget(grp)
 
@@ -151,7 +154,6 @@ class PrintPage(QWidget):
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
         self.combo_repair.setStyleSheet(style_big_ctrl)
         
-        # 修改：同时绑定预览更新和日计数更新
         self.combo_repair.currentIndexChanged.connect(self.on_batch_change)
         
         l_date = QLabel("日期:"); l_date.setStyleSheet(style_big_lbl)
@@ -188,6 +190,10 @@ class PrintPage(QWidget):
         self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
+        
+        # --- 核心修改 2：吸收所有剩余垂直空间，防止其分配给上方的可伸缩组件 ---
+        v_left.addStretch()
+        # --- 结束核心修改 2 ---
         
         content_layout.addLayout(v_left, 7) 
 
@@ -256,8 +262,6 @@ class PrintPage(QWidget):
                 self.table_product.setItem(r,5,QTableWidgetItem(rn))
         
         # --- 确保设置固定的高度，即使数据行数少于最大高度，也不会影响布局 ---
-        # 实际高度 = (行高 + 边框) * 行数 + 表头高度
-        # 假设行高25, 表头25, 最大约5行数据
         min_rows = min(self.table_product.rowCount(), 5)
         height = min_rows * 25 + 25 
         if self.table_product.rowCount() == 0:
