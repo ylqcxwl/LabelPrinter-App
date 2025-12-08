@@ -431,7 +431,40 @@ class SettingsPage(QWidget):
         # 确保路径已保存并提交
         self.db.conn.commit() 
         ok, msg = self.db.backup_db()
+        
+        # 如果备份成功，清理旧备份
+        if ok:
+            self.clean_old_backups()
+            
         QMessageBox.information(self, "结果", msg)
+
+    def clean_old_backups(self):
+        """清理备份目录，只保留最近的两个备份文件"""
+        bk_path = self.db.get_setting('backup_path')
+        if not bk_path or not os.path.isdir(bk_path):
+            return
+            
+        try:
+            # 获取所有 db 文件
+            files = []
+            for f in os.listdir(bk_path):
+                full_path = os.path.join(bk_path, f)
+                if os.path.isfile(full_path) and f.lower().endswith('.db'):
+                    files.append(full_path)
+            
+            # 按修改时间降序排序（最新的在前面）
+            files.sort(key=os.path.getmtime, reverse=True)
+            
+            # 如果数量超过 2，删除多余的
+            if len(files) > 2:
+                for file_to_remove in files[2:]:
+                    try:
+                        os.remove(file_to_remove)
+                        print(f"Deleted old backup: {file_to_remove}")
+                    except Exception as e:
+                        print(f"Failed to delete {file_to_remove}: {e}")
+        except Exception as e:
+            print(f"Error cleaning backups: {e}")
 
     def do_restore(self):
         p, _ = QFileDialog.getOpenFileName(self, "选择数据库", "", "DB (*.db)")
