@@ -55,20 +55,17 @@ class PrintPage(QWidget):
         # 产品列表
         self.table_product = QTableWidget()
         self.table_product.setColumnCount(6)
-        self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前缀", "箱规"])
+        self.table_product.setHorizontalHeaderLabels(["名称", "规格", "颜色", "69码", "SN前4", "箱规"])
         
         header = self.table_product.horizontalHeader()
         header.setFixedHeight(25) 
         self.table_product.verticalHeader().setDefaultSectionSize(25) 
 
-        # --- 固定表格高度 ---
-        self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) 
-        self.table_product.setFixedHeight(150) 
-        # --- 结束固定表格高度 ---
-        
+        self.table_product.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_product.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_product.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_product.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table_product.setMaximumHeight(150)
         self.table_product.setStyleSheet("margin-bottom: 0px;") 
         self.table_product.itemClicked.connect(self.on_product_select)
         v_left.addWidget(self.table_product)
@@ -77,11 +74,6 @@ class PrintPage(QWidget):
 
         # 产品详情
         grp = QGroupBox("产品详情")
-        
-        # --- 核心修改：使用 setFixedHeight 强制固定 QGroupBox 的高度，确保绝对不变 ---
-        grp.setFixedHeight(190) 
-        # --- 结束核心修改 ---
-        
         grp.setStyleSheet("""
             QGroupBox { 
                 font-weight: bold; 
@@ -124,7 +116,7 @@ class PrintPage(QWidget):
             gl.addWidget(widget, r, c+1, Qt.AlignLeft)
 
         add_item(0, 0, "名称:", self.lbl_name)
-        add_item(0, 2, "SN前缀:", self.lbl_sn4)
+        add_item(0, 2, "SN前4:", self.lbl_sn4)
         add_item(0, 4, "SN规则:", self.lbl_sn_rule)
         add_item(1, 0, "规格:", self.lbl_spec)
         add_item(1, 2, "SKU:", self.lbl_sku)
@@ -137,7 +129,6 @@ class PrintPage(QWidget):
 
         gl.setColumnStretch(1, 1); gl.setColumnStretch(3, 1); gl.setColumnStretch(5, 1)
         v_details_left.addLayout(gl)
-        v_details_left.addStretch() # 确保 grid 布局贴顶
         h_grp_layout.addLayout(v_details_left, 10) 
         v_left.addWidget(grp)
 
@@ -154,6 +145,7 @@ class PrintPage(QWidget):
         self.combo_repair = QComboBox(); self.combo_repair.addItems([str(i) for i in range(10)])
         self.combo_repair.setStyleSheet(style_big_ctrl)
         
+        # 修改：同时绑定预览更新和日计数更新
         self.combo_repair.currentIndexChanged.connect(self.on_batch_change)
         
         l_date = QLabel("日期:"); l_date.setStyleSheet(style_big_lbl)
@@ -190,9 +182,6 @@ class PrintPage(QWidget):
         self.input_sn.setStyleSheet("font-size: 50px; padding: 10px; border: 3px solid #3498db; border-radius: 6px; color: #333; margin-top: 0px;")
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
-        
-        # 吸收所有剩余垂直空间，防止其分配给上方的可伸缩组件
-        v_left.addStretch()
         
         content_layout.addLayout(v_left, 7) 
 
@@ -259,14 +248,6 @@ class PrintPage(QWidget):
                     c=self.db.conn.cursor(); c.execute("SELECT name FROM box_rules WHERE id=?",(p['rule_id'],))
                     res=c.fetchone(); rn=res[0] if res else "无"
                 self.table_product.setItem(r,5,QTableWidgetItem(rn))
-        
-        # --- 确保设置固定的高度，即使数据行数少于最大高度，也不会影响布局 ---
-        min_rows = min(self.table_product.rowCount(), 5)
-        height = min_rows * 25 + 25 
-        if self.table_product.rowCount() == 0:
-            height = 50 # 至少显示表头
-        self.table_product.setFixedHeight(max(150, height)) 
-
 
     def on_product_select(self, item):
         if not item: return
@@ -327,18 +308,22 @@ class PrintPage(QWidget):
             self.lbl_box_no.setText("规则错误")
 
     def update_daily(self):
+        """
+        更新今日产量。
+        统计维度：产品 + 规格 + 型号 + 颜色 + 批次 + 69码 + SN前缀
+        """
         if not self.current_product: return
         d = datetime.datetime.now().strftime("%Y-%m-%d")+"%"
         try:
             current_batch = self.combo_repair.currentText()
-            # 获取 69码 和 SN前缀
-            c69 = self.current_product.get('code69', '')
-            sn_prefix = self.current_product.get('sn4', '')
+            c = self.db.conn.cursor()
             
-            c=self.db.conn.cursor()
+            # 获取产品配置中的 69码 和 SN前缀
+            code69_val = str(self.current_product.get('code69', '')).strip()
+            # 构造SN前缀匹配字符串，例如 "ABCD%"
+            sn_prefix = str(self.current_product.get('sn4', '')).strip() + '%'
             
-            # --- 核心修改：统计维度加入 69码 和 SN前缀(通过sn字段模糊匹配) ---
-            # 维度: 产品+规格+型号+颜色+批次+69码+SN前缀
+            # --- 核心修改：增加 69码 和 SN前缀匹配 ---
             query = """
                 SELECT COUNT(DISTINCT box_no) FROM records 
                 WHERE name=? AND spec=? AND model=? AND color=? AND batch=? 
@@ -350,15 +335,17 @@ class PrintPage(QWidget):
                 self.current_product.get('model',''), 
                 self.current_product.get('color',''), 
                 current_batch,
-                c69,
-                f"{sn_prefix}%", # SN前缀匹配
+                code69_val,  # 验证69码
+                sn_prefix,   # 验证SN前缀
                 d
             )
             c.execute(query, params)
             res = c.fetchone()
             count = res[0] if res else 0
             self.lbl_daily.setText(f"今日: {count}")
-        except: pass
+        except Exception as e:
+            print(f"Update Daily Error: {e}")
+            pass
 
     def validate_sn(self, sn):
         sn = re.sub(r'[\s\W\u200b\ufeff]+$', '', sn); sn = sn.strip() 
@@ -417,7 +404,7 @@ class PrintPage(QWidget):
 
     def del_sn(self):
         try:
-            rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedIndexes()], reverse=True)
+            rows = sorted([self.list_sn.row(item) for item in self.list_sn.selectedItems()], reverse=True)
             if not rows: return
             
             for row in rows:
