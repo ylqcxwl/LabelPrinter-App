@@ -103,10 +103,30 @@ class ProductPage(QWidget):
         if not p: return
         try:
             df = pd.read_excel(p)
-            if 'name' not in df.columns or 'sn4' not in df.columns: return QMessageBox.warning(self,"错","缺列")
+            df.columns = df.columns.str.strip() # 清理列名空格
+            
+            # --- 核心修改：将中文列名映射回英文数据库字段名 ---
+            # 定义中英文列名映射 (导入时用于将中文列名标准化为英文)
+            col_map = {
+                '名称':'name', '规格':'spec', '型号':'model', '颜色':'color', 'SN前缀':'sn4',
+                'SKU':'sku', '69码':'code69', '数量':'qty', '重量':'weight', '模板路径':'template_path',
+                '箱规ID':'rule_id', 'SN规ID':'sn_rule_id', 'ID':'id' # ID虽然不用，但可以映射
+            }
+            
+            # 1. 将数据列名标准化为英文DB字段名
+            # 只有在 Excel 中存在中文列名时才会进行重命名
+            rename_dict = {c: col_map.get(c, c) for c in df.columns if col_map.get(c, c) != c}
+            df.rename(columns=rename_dict, inplace=True)
+            
+            # 2. 检查必要的列名 (使用英文DB字段名)
+            if 'name' not in df.columns or 'sn4' not in df.columns: 
+                return QMessageBox.warning(self,"错","缺列: 缺少 'name/名称' 或 'sn4/SN前缀'")
+            # --- 结束核心修改 ---
+
             s, f = 0, 0
             for _, r in df.iterrows():
                 try:
+                    # 原有逻辑不变，使用英文DB字段名
                     val = (
                         str(r['name']), str(r.get('spec','')), str(r.get('model','')), str(r.get('color','')), 
                         str(r['sn4']), str(r.get('sku','')), str(r.get('code69','')), int(r.get('qty',1)), 
@@ -220,4 +240,4 @@ class ProductDialog(QDialog):
             self.inputs["SN前缀(唯一)"].text(), self.inputs["SKU"].text(), self.inputs["69码"].text(),
             self.spin_qty.value(), self.inputs["重量"].text(), self.full_tmpl,
             self.cb_box.currentData(), self.cb_sn.currentData()
-      )
+                                                                           )
