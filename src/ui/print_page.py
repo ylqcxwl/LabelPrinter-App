@@ -78,9 +78,9 @@ class PrintPage(QWidget):
         # 产品详情
         grp = QGroupBox("产品详情")
         
-        # --- 核心修改 1：限制 QGroupBox 的最大高度，防止其在 QVBoxLayout 中过度拉伸 ---
-        grp.setMaximumHeight(250) 
-        # --- 结束核心修改 1 ---
+        # --- 核心修改：使用 setFixedHeight 强制固定 QGroupBox 的高度，确保绝对不变 ---
+        grp.setFixedHeight(190) 
+        # --- 结束核心修改 ---
         
         grp.setStyleSheet("""
             QGroupBox { 
@@ -191,9 +191,8 @@ class PrintPage(QWidget):
         self.input_sn.returnPressed.connect(self.on_sn_scan)
         v_left.addWidget(self.input_sn)
         
-        # --- 核心修改 2：吸收所有剩余垂直空间，防止其分配给上方的可伸缩组件 ---
+        # 吸收所有剩余垂直空间，防止其分配给上方的可伸缩组件
         v_left.addStretch()
-        # --- 结束核心修改 2 ---
         
         content_layout.addLayout(v_left, 7) 
 
